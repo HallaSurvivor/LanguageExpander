@@ -62,6 +62,13 @@ drawBST = go
 
     drawSubTrees = drawGenericSubTree drawBST
 
+
+instance (Show a) => Show (BSTTerm a) where
+  show = unlines . drawBSTTerm
+
+instance (Show a) => Show (BSTAtomic a) where
+  show = unlines . drawBSTAtomic
+
 instance (Show a) => Show (BST a) where
   show = unlines . drawBST
 
@@ -88,8 +95,111 @@ parseBSTTerm :: Parser (BSTTerm String)
 parseBSTTerm = do
   try parseBSTPowerSet <|> try parseBSTEmptySet <|> parseBSTVar
 
+
+parseBSTEq :: Parser (BSTAtomic String)
+parseBSTEq = do
+  char '('
+  x1 <- parseBSTTerm
+  char ')'
+  char '='
+  char '('
+  x2 <- parseBSTTerm
+  char ')'
+  return $ BSTEq x1 x2
+
+parseBSTMembership :: Parser (BSTAtomic String)
+parseBSTMembership = do
+  string "Member"
+  char '('
+  x1 <- parseBSTTerm
+  char ','
+  x2 <- parseBSTTerm
+  char ')'
+  return $ BSTMembership x1 x2
+
+parseBSTAtomic :: Parser (BSTAtomic String)
+parseBSTAtomic = do
+  try parseBSTEq <|> try parseBSTMembership
+
+
+parseBSTAtom :: Parser (BST String)
+parseBSTAtom = do
+  x <- parseBSTAtomic
+  return $ BSTAtom x
+
+parseBSTAnd :: Parser (BST String)
+parseBSTAnd = do
+  char '('
+  x1 <- parseBST
+  char ')'
+  string "&&"
+  char '('
+  x2 <- parseBST
+  char ')'
+  return $ BSTAnd x1 x2
+
+parseBSTOr :: Parser (BST String)
+parseBSTOr = do
+  char '('
+  x1 <- parseBST
+  char ')'
+  string "||"
+  char '('
+  x2 <- parseBST
+  char ')'
+  return $ BSTOr x1 x2
+
+parseBSTImplies :: Parser (BST String)
+parseBSTImplies = do
+  char '('
+  x1 <- parseBST
+  char ')'
+  string "->"
+  char '('
+  x2 <- parseBST
+  char ')'
+  return $ BSTImplies x1 x2
+
+parseBSTIff :: Parser (BST String)
+parseBSTIff = do
+  char '('
+  x1 <- parseBST
+  char ')'
+  string "<->"
+  char '('
+  x2 <- parseBST
+  char ')'
+  return $ BSTIff x1 x2
+
+parseBSTNot :: Parser (BST String)
+parseBSTNot = do
+  string "Not"
+  char '('
+  x1 <- parseBST
+  char ')'
+  return $ BSTNot x1
+
+parseBSTForAll :: Parser (BST String)
+parseBSTForAll = do
+  string "[(ForAll "
+  v <- many1 letter
+  string ")"
+  x1 <- parseBST
+  string "]"
+  return $ BSTForAll v x1
+
+parseBSTExists :: Parser (BST String)
+parseBSTExists = do
+  string "[(Exists "
+  v <- many1 letter
+  string ")"
+  x1 <- parseBST
+  string "]"
+  return $ BSTExists v x1
+
 parseBST :: Parser (BST String)
-parseBST = undefined
+parseBST = do
+  try parseBSTAtom <|> try parseBSTAnd <|> try parseBSTOr <|> try parseBSTImplies <|> try parseBSTIff <|> try parseBSTNot <|> try parseBSTForAll <|> parseBSTExists
 
 
 -- TODO: AST -> unparsed symbols
@@ -99,22 +209,13 @@ parseBST = undefined
 
 -- {{{ Outer parser stuff -- main program
 
-parseDesiredConversion :: Parser String
-parseDesiredConversion = do
-  dc <- string "convertBSTtoBST"
-  return dc
-
-conversion :: Parser String
-conversion = do
-  parseDesiredConversion
-
 convert :: String -> String
 convert s =
   case ret of
-    Left e -> "error: " ++ (show e)
-    Right o -> "converted: " ++ o
+    Left  e -> "error: " ++ (show e)
+    Right v -> "answer: \n" ++ (show v)
   where
-    ret = parse conversion "" s
+    ret = parse parseBST "" s
 
 main :: IO ()
 main = interact (unlines . (map convert) . lines)
