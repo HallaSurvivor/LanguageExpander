@@ -65,22 +65,32 @@ drawBST = go
 instance (Show a) => Show (BST a) where
   show = unlines . drawBST
 
--- {{{ BST Parser
 
 parseBSTVar :: Parser (BSTTerm String)
 parseBSTVar = do
   v <- many1 letter
   return $ BSTVar v
 
-parseBSTEq :: Parser (BST String)
-parseBSTEq = undefined
+parseBSTEmptySet :: Parser (BSTTerm String)
+parseBSTEmptySet = do
+  string "EmptySet"
+  return $ BSTEmptySet
+
+parseBSTPowerSet :: Parser (BSTTerm String)
+parseBSTPowerSet = do
+  string "P"
+  char '('
+  x1 <- parseBSTTerm
+  char ')'
+  return $ BSTPowerSet x1
   
+parseBSTTerm :: Parser (BSTTerm String)
+parseBSTTerm = do
+  try parseBSTPowerSet <|> try parseBSTEmptySet <|> parseBSTVar
 
 parseBST :: Parser (BST String)
 parseBST = undefined
 
-
--- }}}
 
 -- TODO: AST -> unparsed symbols
 
