@@ -1,0 +1,13 @@
+{ name: BST
+, extends: {}
+, relations: {(Membership, 2, 1 in 2)}
+, functions: {}
+}
+
+{ name: EST
+, extends: BST
+, relations: {}
+, functions: {(EmptySet, 0, EmptySet, (ForAll x)(not (x in 1)))}
+}
+
+(Name, arity, syntax, definition)

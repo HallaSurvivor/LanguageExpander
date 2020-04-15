@@ -1,5 +1,5 @@
 -- A module to make ASTs for Main.hs
-module MkST where
+module MkST (makeST) where
 import System.IO
 
 main :: IO ()
@@ -29,7 +29,7 @@ main = do
       rs = zip (words rsn) (fmap read (words rsa))
       fs = zip (words fsn) (fmap read (words fsa))
 
-  writeFile fname (makeOutput name cs rs fs)
+  writeFile fname (makeST name cs rs fs)
 
 makeData :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
 makeData name cs rs fs = unlines $ topLine ++ logicLines ++ constLines ++ relLines ++ funLines ++ bottomLine
@@ -104,5 +104,5 @@ makePrettyPrinter name cs rs fs = unlines $ concat full
 
     full = [topLines, logicLines, constLines, relLines, funLines, bottomLines]
 
-makeOutput :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makeOutput name cs rs fs = (makeData name cs rs fs) ++ "\n\n" ++ (makePrettyPrinter name cs rs fs)
+makeST :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
+makeST name cs rs fs = (makeData name cs rs fs) ++ "\n\n" ++ (makePrettyPrinter name cs rs fs)
