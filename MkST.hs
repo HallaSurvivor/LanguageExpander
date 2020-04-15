@@ -1,6 +1,37 @@
 -- A module to make ASTs for Main.hs
 module MkST where
+import System.IO
 
+main :: IO ()
+main = do
+  putStrLn "Language abbreviation?"
+  name <- getLine
+
+  putStrLn "Constants? (space separated list)"
+  csn <- getLine
+
+  putStrLn "Relations? (space separated list of names)"
+  rsn <- getLine
+
+  putStrLn "and their arities? (space separated list of nats)"
+  rsa <- getLine
+
+  putStrLn "Functions? (space separated list of names)"
+  fsn <- getLine
+
+  putStrLn "and their arities? (space separated list of nats)"
+  fsa <- getLine
+
+  putStrLn "Where should I save these?"
+  fname <- getLine
+
+  let cs = words csn
+      rs = zip (words rsn) (fmap read (words rsa))
+      fs = zip (words fsn) (fmap read (words fsa))
+
+  writeFile fname (makeOutput name cs rs fs)
+
+makeData :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
 makeData name cs rs fs = unlines $ topLine ++ logicLines ++ constLines ++ relLines ++ funLines ++ bottomLine
   where
     padding = take (length name + 8) $ repeat ' '
@@ -17,7 +48,7 @@ makeData name cs rs fs = unlines $ topLine ++ logicLines ++ constLines ++ relLin
                 , mkLine ("Implies", 2)
                 , mkLine ("Iff", 2)
                 , mkLine ("Not", 1)
-                , mkLine ("ForALl a", 1)
+                , mkLine ("ForAll a", 1)
                 , mkLine ("Exists a", 1)
                 ]
 
@@ -25,8 +56,9 @@ makeData name cs rs fs = unlines $ topLine ++ logicLines ++ constLines ++ relLin
     relLines   = fmap mkLine rs
     funLines   = fmap mkLine fs
 
-    bottomLine = ["  deriving (Functor)"]
+    bottomLine = []
   
+makePrettyPrinter :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
 makePrettyPrinter name cs rs fs = unlines $ concat full
   where
     prefix = "    go "
@@ -39,8 +71,8 @@ makePrettyPrinter name cs rs fs = unlines $ concat full
         pattern = prefix ++ "(" ++ name ++ symbol ++ (mkArgs arity) ++ ")"
         call = "[\"" ++ symbol ++ "\"]" ++ " ++ drawSubTrees [" ++ (mkTreeArgs arity) ++ "]"
 
-    topLines = [ "draw" ++ name ++ " :: (Show a) => " ++ name ++ " a -> String"
-               , "draw" ++ name ++ " = unlines . go"
+    topLines = [ "draw" ++ name ++ " :: (Show a) => " ++ name ++ " a -> [String]"
+               , "draw" ++ name ++ " = go"
                , "  where"
                , "    go (" ++ name ++ "Var x) = [show x]"
                ]
@@ -55,7 +87,7 @@ makePrettyPrinter name cs rs fs = unlines $ concat full
                 , "    go (" ++ name ++ "Exists x1 x2) = [\"For all \" ++ show x1] ++ drawSubTrees [x2]"
                 ]
 
-    constLines = fmap (\c -> mkLine (c,0)) cs
+    constLines = fmap (\c -> prefix ++ "(" ++ name ++ c ++ ") = [\"" ++ c ++ "\"]") cs
     relLines   = fmap mkLine rs
     funLines   = fmap mkLine fs
 
@@ -67,7 +99,10 @@ makePrettyPrinter name cs rs fs = unlines $ concat full
                   , "    shift first other = zipWith (++) (first : repeat other)"
                   , ""
                   , "instance (Show a) => Show (" ++ name ++ " a) where"
-                  , "  show = draw" ++ name
+                  , "  show = unlines . draw" ++ name
                   ]
 
     full = [topLines, logicLines, constLines, relLines, funLines, bottomLines]
+
+makeOutput :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
+makeOutput name cs rs fs = (makeData name cs rs fs) ++ "\n\n" ++ (makePrettyPrinter name cs rs fs)
