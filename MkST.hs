@@ -31,6 +31,8 @@ main = do
 
   writeFile fname (makeST name cs rs fs)
 
+-- {{{ Make the datatype
+
 makeData :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
 makeData name cs rs fs = unlines $ topLine ++ logicLines ++ constLines ++ relLines ++ funLines ++ bottomLine
   where
@@ -106,3 +108,39 @@ makePrettyPrinter name cs rs fs = unlines $ concat full
 
 makeST :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
 makeST name cs rs fs = (makeData name cs rs fs) ++ "\n\n" ++ (makePrettyPrinter name cs rs fs)
+
+-- }}}
+
+-- {{{ Make the parser
+
+mkLexer :: String -> [String] -> [(String,Int)] -> [(String,Int)] -> String
+mkLexer name cs rs fs = unlines $ header ++ reservedNames ++ footer
+  where
+    header = [ "lexer" ++ name ++ " :: TokenParser ()"
+             , "lexer" ++ name ++ " = makeTokenParser languageDef"
+             , "  where"
+             , "    languageDef ="
+             , "      emptyDef { commentStart = \"/*\""
+             , "               , commentEnd = \"*/\""
+             , "               , commentLine = \"//\""
+             , "               , identStart = letter"
+             , "               , identLetter = alphaNum"
+             , "               , reservedNames = [ \"Eq\""
+             , "                                 , \"Not\""
+             , "                                 , \"ForAll\""
+             , "                                 , \"Exists\""
+             ]
+
+    reservedNames = fmap (\n -> padding ++ n ++ "\"") ns
+      where
+        padding = "                                 , \""
+        ns = cs ++ map fst rs ++ map fst fs
+
+    footer = [ "                                 ]"
+             , "               , reservedOpNames = [ \"&&\", \"||\", \"->\", \"<->\" ]"
+             , "               }"
+             ]
+      
+
+-- }}}
+
