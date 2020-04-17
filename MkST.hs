@@ -142,5 +142,59 @@ mkLexer name cs rs fs = unlines $ header ++ reservedNames ++ footer
              ]
       
 
+mkTermParser :: String -> [String] -> [(String,Int)] -> [(String, Int)] -> String
+mkTermParser name cs rs fs = unlines $ header ++ otherCases ++ whereVar ++ otherDefinitions
+  where
+    header = [ "parse" ++ name ++ "Term :: Parser (" ++ name ++ "Term String)" 
+             , "parse" ++ name ++ "Term = parse" ++ name ++ "Var"
+             ]
+
+    otherCases = undefined -- map over stuff?
+
+    whereVar = [ "  where"
+               , "    parse" ++ name "Var = do"
+               , "      v <- indentifier lexer" ++ name
+               , "      return $ " ++ name ++ "Var v"
+               , ""
+               ]
+
+    otherDefinitions = undefined -- map over stuff?
+
+mkAtomicParser :: String -> [String] -> [(String,Int)] -> [(String,Int)] -> String
+mkAtomicParser name cs rs fs = unlines $ header ++ otherCases ++ ["  where"] ++ otherDefinitions
+  where
+    header = undefined
+    otherCases = undefined
+    otherDefinitions = undefined
+
+mkParser :: String -> [String] -> [(String,Int)] -> [(String,Int)] -> String
+mkPraser name cs rs fs = unlines wholeThing
+  where
+    lexName = "lexer" ++ name
+
+    wholeThing = [ "parse" ++ name ++ " :: Parser ("++ name ++ " String)"
+                 , "parse" ++ name ++ " = (flip buildExpressionParser) parse" ++ name ++ "' $ ["
+                 , "    [ Prefix (reserved " ++ lexName ++ " \"Not\" >> return " ++ name ++ "Not) ]"
+                 , "  , [ Infix (reservedOp " ++ lexName ++ " \"&&\" >> return " ++ name ++ "And) AssocLeft ]"
+                 , "  , [ Infix (reservedOp " ++ lexName ++ " \"||\" >> return " ++ name ++ "Or) AssocLeft ]"
+                 , "  , [ Infix (reservedOp " ++ lexName ++ " \"->\" >> return " ++ name ++ "Implies) AssocRight"
+                   "    , Infix (reservedOp " ++ lexName ++ " \"<->\" >> return " ++ name ++ "Iff) AssocLeft"
+                 , "    ]"
+                 , "  ]"
+                 , ""
+                 , "parse" ++ name ++ "' :: Parser (" ++ name ++ " String)"
+                 , "parse" ++ name ++ "' = (parens" ++ lexName ++ " parse" ++ name ++") <|> parseForAll <|> parseExists <|> parseAtom"
+                 , "  where"
+                 , "    parseAtom = do"
+                 , "      x <- parse" ++ name ++ "Atomic"
+                 , "      return $ " ++ name ++ "Atom x"
+                 , ""
+                 , "    parseForAll = do"
+                 , "      reserved " ++ lexName ++ " \"ForAll\""
+                 , "      x <- identifier " ++ lexName
+                 , "      e <- parens " ++ lexName ++ " parse" ++ name
+                 , "      return $ " ++ name ++ "Exists x e"
+                 ]
+
 -- }}}
 
