@@ -2,6 +2,9 @@ module BST where
 
 import Text.Parsec
 import Text.Parsec.String 
+import Text.Parsec.Token
+import Text.Parsec.Language
+import Text.Parsec.Expr
 
 -- {{{ Stuff every ST can use
 
@@ -58,7 +61,7 @@ drawBST = go
     go (BSTIff x1 x2) = ["Iff"] ++ drawSubTrees [x1,x2]
     go (BSTNot x1) = ["Not"] ++ drawSubTrees [x1]
     go (BSTForAll x1 x2) = ["For all " ++ show x1] ++ drawSubTrees [x2]
-    go (BSTExists x1 x2) = ["For all " ++ show x1] ++ drawSubTrees [x2]
+    go (BSTExists x1 x2) = ["Exists " ++ show x1] ++ drawSubTrees [x2]
 
     drawSubTrees = drawGenericSubTree drawBST
 
@@ -73,133 +76,105 @@ instance (Show a) => Show (BST a) where
   show = unlines . drawBST
 
 
-parseBSTVar :: Parser (BSTTerm String)
-parseBSTVar = do
-  v <- many1 letter
-  return $ BSTVar v
+lexerBST :: TokenParser ()
+lexerBST = makeTokenParser languageDef
+  where
+    languageDef =
+      emptyDef { commentStart = "/*"
+               , commentEnd = "*/"
+               , commentLine = "//"
+               , identStart = letter
+               , identLetter = alphaNum
+               , reservedNames = [ "Empty"
+                                 , "P" 
+                                 , "In"
+                                 , "Eq"
+                                 , "Not"
+                                 , "ForAll"
+                                 , "Exists"
+                                 ]
+               , reservedOpNames = [ "&&", "||", "->", "<->" ]
+               }
 
-parseBSTEmptySet :: Parser (BSTTerm String)
-parseBSTEmptySet = do
-  string "EmptySet"
-  return $ BSTEmptySet
-
-parseBSTPowerSet :: Parser (BSTTerm String)
-parseBSTPowerSet = do
-  string "P"
-  char '('
-  x1 <- parseBSTTerm
-  char ')'
-  return $ BSTPowerSet x1
-  
 parseBSTTerm :: Parser (BSTTerm String)
-parseBSTTerm = do
-  try parseBSTPowerSet <|> try parseBSTEmptySet <|> parseBSTVar
+parseBSTTerm = parseBSTVar 
+            <|> parseBSTEmptySet
+            <|> parseBSTPowerSet
+  where
+    parseBSTVar = do 
+      v <- identifier lexerBST
+      return $ BSTVar v
 
+    parseBSTEmptySet = do
+      reserved lexerBST "Empty"
+      return BSTEmptySet
 
-parseBSTEq :: Parser (BSTAtomic String)
-parseBSTEq = do
-  char '('
-  x1 <- parseBSTTerm
-  char ')'
-  char '='
-  char '('
-  x2 <- parseBSTTerm
-  char ')'
-  return $ BSTEq x1 x2
-
-parseBSTMembership :: Parser (BSTAtomic String)
-parseBSTMembership = do
-  string "Member"
-  char '('
-  x1 <- parseBSTTerm
-  char ','
-  x2 <- parseBSTTerm
-  char ')'
-  return $ BSTMembership x1 x2
+    parseBSTPowerSet = do
+      reserved lexerBST "P"
+      char '('
+      whiteSpace lexerBST
+      x1 <- parseBSTTerm
+      char ')'
+      return $ BSTPowerSet x1
 
 parseBSTAtomic :: Parser (BSTAtomic String)
-parseBSTAtomic = do
-  try parseBSTEq <|> try parseBSTMembership
+parseBSTAtomic = parseBSTEq 
+              <|> parseBSTMembership
+              <|> parens lexerBST parseBSTEq
+              <|> parens lexerBST parseBSTMembership
+  where
+    parseBSTEq = do
+      reserved lexerBST "Eq"
+      char '('
+      whiteSpace lexerBST 
+      x1 <- parseBSTTerm
+      char ','
+      whiteSpace lexerBST
+      x2 <- parseBSTTerm
+      char ')'
+      whiteSpace lexerBST
+      return $ BSTEq x1 x2
 
-
-parseBSTAtom :: Parser (BST String)
-parseBSTAtom = do
-  x <- parseBSTAtomic
-  return $ BSTAtom x
-
-parseBSTAnd :: Parser (BST String)
-parseBSTAnd = do
-  char '('
-  x1 <- parseBST
-  char ')'
-  string "&&"
-  char '('
-  x2 <- parseBST
-  char ')'
-  return $ BSTAnd x1 x2
-
-parseBSTOr :: Parser (BST String)
-parseBSTOr = do
-  char '('
-  x1 <- parseBST
-  char ')'
-  string "||"
-  char '('
-  x2 <- parseBST
-  char ')'
-  return $ BSTOr x1 x2
-
-parseBSTImplies :: Parser (BST String)
-parseBSTImplies = do
-  char '('
-  x1 <- parseBST
-  char ')'
-  string "->"
-  char '('
-  x2 <- parseBST
-  char ')'
-  return $ BSTImplies x1 x2
-
-parseBSTIff :: Parser (BST String)
-parseBSTIff = do
-  char '('
-  x1 <- parseBST
-  char ')'
-  string "<->"
-  char '('
-  x2 <- parseBST
-  char ')'
-  return $ BSTIff x1 x2
-
-parseBSTNot :: Parser (BST String)
-parseBSTNot = do
-  string "Not"
-  char '('
-  x1 <- parseBST
-  char ')'
-  return $ BSTNot x1
-
-parseBSTForAll :: Parser (BST String)
-parseBSTForAll = do
-  string "[(ForAll "
-  v <- many1 letter
-  string ")"
-  x1 <- parseBST
-  string "]"
-  return $ BSTForAll v x1
-
-parseBSTExists :: Parser (BST String)
-parseBSTExists = do
-  string "[(Exists "
-  v <- many1 letter
-  string ")"
-  x1 <- parseBST
-  string "]"
-  return $ BSTExists v x1
+    parseBSTMembership = do
+      reserved lexerBST "In"
+      char '('
+      whiteSpace lexerBST
+      x1 <- parseBSTTerm
+      char ','
+      whiteSpace lexerBST
+      x2 <- parseBSTTerm
+      char ')'
+      whiteSpace lexerBST
+      return $ BSTMembership x1 x2
 
 parseBST :: Parser (BST String)
-parseBST = do
-  try parseBSTAtom <|> try parseBSTAnd <|> try parseBSTOr <|> try parseBSTImplies <|> try parseBSTIff <|> try parseBSTNot <|> try parseBSTForAll <|> parseBSTExists
+parseBST = (flip buildExpressionParser) parseBST' $ [
+    [ Prefix (reserved lexerBST "Not" >> return BSTNot) ]
+  , [ Infix (reservedOp lexerBST "&&" >> return BSTAnd) AssocLeft ]
+  , [ Infix (reservedOp lexerBST "||" >> return BSTOr) AssocLeft ]
+  , [ Infix (reservedOp lexerBST "->" >> return BSTImplies) AssocRight
+    , Infix (reservedOp lexerBST "<->" >> return BSTIff) AssocLeft
+    ]
+  ]
+
+parseBST' :: Parser (BST String)
+parseBST' = (parens lexerBST parseBST) <|> parseBSTForAll <|> parseBSTExists <|> parseBSTAtom 
+  where
+    parseBSTAtom = do
+      x <- parseBSTAtomic
+      return $ BSTAtom x
+
+    parseBSTForAll = do
+      reserved lexerBST "ForAll"
+      x <- identifier lexerBST
+      e <- parens lexerBST parseBST
+      return $ BSTForAll x e
+
+    parseBSTExists = do
+      reserved lexerBST "Exists"
+      x <- identifier lexerBST
+      e <- parens lexerBST parseBST
+      return $ BSTExists x e
 
 
 -- TODO: AST -> unparsed symbols
@@ -209,13 +184,20 @@ parseBST = do
 
 -- {{{ Outer parser stuff -- main program
 
+parseInput :: Parser (BST String)
+parseInput = do
+  whiteSpace lexerBST
+  e <- parseBST
+  eof
+  return e
+
 convert :: String -> String
 convert s =
   case ret of
     Left  e -> "error: " ++ (show e)
     Right v -> "answer: \n" ++ (show v)
   where
-    ret = parse parseBST "" s
+    ret = parse parseInput "" s
 
 main :: IO ()
 main = interact (unlines . (map convert) . lines)
