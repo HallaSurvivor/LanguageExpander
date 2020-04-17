@@ -143,32 +143,85 @@ mkLexer name cs rs fs = unlines $ header ++ reservedNames ++ footer
       
 
 mkTermParser :: String -> [String] -> [(String,Int)] -> [(String, Int)] -> String
-mkTermParser name cs rs fs = unlines $ header ++ otherCases ++ whereVar ++ otherDefinitions
+mkTermParser name cs rs fs = unlines $ header ++ otherCases ++ whereVar ++ constDefns ++ funDefns
   where
     header = [ "parse" ++ name ++ "Term :: Parser (" ++ name ++ "Term String)" 
              , "parse" ++ name ++ "Term = parse" ++ name ++ "Var"
              ]
 
-    otherCases = undefined -- map over stuff?
+    otherCases = fmap mkCase (cs ++ fmap fst fs)
+      where
+        mkCase f = "    <|> parse" ++ name ++ f
 
     whereVar = [ "  where"
-               , "    parse" ++ name "Var = do"
+               , "    parse" ++ name ++ "Var = do"
                , "      v <- indentifier lexer" ++ name
                , "      return $ " ++ name ++ "Var v"
                , ""
                ]
 
-    otherDefinitions = undefined -- map over stuff?
+    constDefns = concat $ fmap mkDefn cs
+      where
+        mkDefn c = [ "    parse" ++ name ++ c ++ " = do"
+                   , "      reserved lexer" ++ name ++ " \"" ++ c ++"\""
+                   , "      return " ++ name ++ c
+                   , ""
+                   ]
+
+    funDefns = concat $ fmap mkDefn fs
+      where
+        mkLine [n] = [ "      x" ++ (show n) ++ " <- parse" ++ name ++ "Term" 
+                     , "      char \')\'"
+                     , "      whiteSpace lexer" ++ name
+                     ]
+        mkLine (i:is) =  [ "      x" ++ (show i) ++ " <- parse" ++ name ++ "Term"
+                         , "      char \',\'"
+                         , "      whiteSpace lexer" ++ name
+                         ] ++ (mkLine is)
+
+        vars n = concat $ fmap (\i -> " x" ++ show i) [1..n]
+
+        mkDefn (f,n) = [ "    parse" ++ name ++ f ++ " do" 
+                       , "      reserved lexer" ++ name ++ " \"" ++ f ++ "\""
+                       , "      char \'(\'"
+                       , "      whiteSpace lexer" ++ name
+                       ] ++ mkLine [1..n] ++ ["      return $ " ++ name ++ f ++ (vars n), ""]
 
 mkAtomicParser :: String -> [String] -> [(String,Int)] -> [(String,Int)] -> String
 mkAtomicParser name cs rs fs = unlines $ header ++ otherCases ++ ["  where"] ++ otherDefinitions
   where
-    header = undefined
-    otherCases = undefined
-    otherDefinitions = undefined
+    header = [ "parse" ++ name ++ "Atomic :: Parser (" ++ name ++ "Atomic String)"
+             , "parse" ++ name ++ "Atomic ="  
+             , "    parse" ++ name ++ "Eq"
+             ]
+
+    otherCases = fmap mkCase rs
+      where
+        mkCase (r,_) = "    <|> parse" ++ name ++ r
+
+    otherDefinitions = concat $ fmap mkDefn rs
+      where
+        mkLine [n]    = [ "      x" ++ (show n) ++ " <- parse" ++ name ++ "Term"
+                        , "      char \')\'"
+                        , "      whiteSpace lexer" ++ name
+                        ]
+        mkLine (i:is) = [ "      x" ++ (show i) ++ " <- parse" ++ name ++ "Term"
+                        , "      char \',\'"
+                        , "      whiteSpace lexer" ++ name
+                        ] ++ (mkLine is)
+
+        vars n = concat $ fmap (\i -> " x" ++ show i) [1..n]
+
+        mkDefn (r,n) = [ "    parse" ++ name ++ r ++ " = do"
+                       , "      reserved lexer" ++ name ++ " \"" ++ r ++ "\""
+                       , "      char \'(\'"
+                       , "      whiteSpace lexer" ++ name
+                       ] ++ mkLine [1..n] ++ 
+                       ["      return $ " ++ name ++ r ++ (vars n), ""]
+
 
 mkParser :: String -> [String] -> [(String,Int)] -> [(String,Int)] -> String
-mkPraser name cs rs fs = unlines wholeThing
+mkParser name cs rs fs = unlines wholeThing
   where
     lexName = "lexer" ++ name
 
@@ -178,7 +231,7 @@ mkPraser name cs rs fs = unlines wholeThing
                  , "  , [ Infix (reservedOp " ++ lexName ++ " \"&&\" >> return " ++ name ++ "And) AssocLeft ]"
                  , "  , [ Infix (reservedOp " ++ lexName ++ " \"||\" >> return " ++ name ++ "Or) AssocLeft ]"
                  , "  , [ Infix (reservedOp " ++ lexName ++ " \"->\" >> return " ++ name ++ "Implies) AssocRight"
-                   "    , Infix (reservedOp " ++ lexName ++ " \"<->\" >> return " ++ name ++ "Iff) AssocLeft"
+                 , "    , Infix (reservedOp " ++ lexName ++ " \"<->\" >> return " ++ name ++ "Iff) AssocLeft"
                  , "    ]"
                  , "  ]"
                  , ""

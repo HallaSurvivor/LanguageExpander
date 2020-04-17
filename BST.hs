@@ -118,10 +118,8 @@ parseBSTTerm = parseBSTVar
       return $ BSTPowerSet x1
 
 parseBSTAtomic :: Parser (BSTAtomic String)
-parseBSTAtomic = parseBSTEq -- do we actually need to repeat these?
+parseBSTAtomic = parseBSTEq 
               <|> parseBSTMembership
-              <|> parens lexerBST parseBSTEq
-              <|> parens lexerBST parseBSTMembership
   where
     parseBSTEq = do
       reserved lexerBST "Eq"
