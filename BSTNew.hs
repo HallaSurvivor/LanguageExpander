@@ -1,47 +1,95 @@
-data BST a = BSTVar a
-           | BSTEq (BST a) (BST a)
-           | BSTAnd (BST a) (BST a)
-           | BSTOr (BST a) (BST a)
-           | BSTImplies (BST a) (BST a)
-           | BSTIff (BST a) (BST a)
-           | BSTNot (BST a)
-           | BSTForAll a (BST a)
-           | BSTExists a (BST a)
-           | BSTEmpty
-           | BSTIn (BST a) (BST a)
-           | BSTIsOrdinal (BST a)
-           | BSTPowerSet (BST a)
-           | BSTBinaryUnion (BST a) (BST a)
+module BSTNew where
+import Text.Parsec
+import Text.Parsec.String
+import Text.Parsec.Token
+import Text.Parsec.Language
+import Text.Parsec.Expr
 
-
-drawBST :: (Show a) => BST a -> [String]
-drawBST = go
+drawGenericSubTree :: (a -> [String]) -> [a] -> [String]
+drawGenericSubTree drawTree = go
   where
-    go (BSTVar x) = [show x]
-    go (BSTEq x1 x2) = ["Eq"] ++ drawSubTrees [x1,x2]
-    go (BSTAnd x1 x2) = ["And"] ++ drawSubTrees [x1,x2]
-    go (BSTOr x1 x2) = ["Or"] ++ drawSubTrees [x1,x2]
-    go (BSTImplies x1 x2) = ["Implies"] ++ drawSubTrees [x1,x2]
-    go (BSTIff x1 x2) = ["Iff"] ++ drawSubTrees [x1,x2]
-    go (BSTNot x1) = ["Not"] ++ drawSubTrees [x1]
-    go (BSTForAll x1 x2) = ["For all " ++ show x1] ++ drawSubTrees [x2]
-    go (BSTExists x1 x2) = ["For all " ++ show x1] ++ drawSubTrees [x2]
-    go (BSTEmpty) = ["Empty"]
-    go (BSTIn x1 x2) = ["In"] ++ drawSubTrees [x1,x2]
-    go (BSTIsOrdinal x1) = ["IsOrdinal"] ++ drawSubTrees [x1]
-    go (BSTPowerSet x1) = ["PowerSet"] ++ drawSubTrees [x1]
-    go (BSTBinaryUnion x1 x2) = ["BinaryUnion"] ++ drawSubTrees [x1,x2]
-
-    drawSubTrees []     = []
-    drawSubTrees [t]    = "|" : shift "`- " "   " (drawBST t)
-    drawSubTrees (t:ts) = "|" : shift "+- " "|  " (drawBST t) ++ drawSubTrees ts
+    go [] = []
+    go [t] = "|" : shift "`- " "   " (drawTree t)
+    go (t:ts) = "|" : shift "+ " "|  " (drawTree t) ++ go ts
 
     shift first other = zipWith (++) (first : repeat other)
 
-instance (Show a) => Show (BST a) where
-  show = unlines . drawBST
-lexerBST :: TokenParser ()
-lexerBST = makeTokenParser languageDef
+
+parseInput :: Parser (BSTNew String)
+parseInput = do
+  whiteSpace lexerBSTNew
+  e <- parseBSTNew
+  eof
+  return e
+
+convert :: String -> String
+convert s =
+  case ret of
+    Left e -> "error: " ++ (show e)
+    Right v -> "answer: \n" ++ (show v)
+  where
+    ret = parse parseInput "" s
+
+main :: IO ()
+main = interact (unlines . (map convert) . lines)
+
+data BSTNewTerm a = BSTNewVar a
+                  | BSTNewEmpty
+                  | BSTNewPowerSet (BSTNewTerm a)
+                  | BSTNewBinUnion (BSTNewTerm a) (BSTNewTerm a)
+
+data BSTNewAtomic a = BSTNewEq (BSTNewTerm a) (BSTNewTerm a)
+                   | BSTNewIn (BSTNewTerm a) (BSTNewTerm a)
+                   | BSTNewIsOrdinal (BSTNewTerm a)
+
+data BSTNew a = BSTNewAtom (BSTNewAtomic a)
+              | BSTNewAnd (BSTNew a) (BSTNew a)
+              | BSTNewOr (BSTNew a) (BSTNew a)
+              | BSTNewImplies (BSTNew a) (BSTNew a)
+              | BSTNewIff (BSTNew a) (BSTNew a)
+              | BSTNewNot (BSTNew a)
+              | BSTNewForAll a (BSTNew a)
+              | BSTNewExists a (BSTNew a)
+
+drawBSTNewTerm :: (Show a) => BSTNewTerm a -> [String]
+drawBSTNewTerm = go
+  where
+    go (BSTNewVar x) = [show x]
+    go (BSTNewEmpty) = ["Empty"]
+    go (BSTNewPowerSet x1) = ["PowerSet"] ++ drawGenericSubTree drawBSTNewTerm [x1]
+    go (BSTNewBinUnion x1 x2) = ["BinUnion"] ++ drawGenericSubTree drawBSTNewTerm [x1,x2]
+
+
+drawBSTNewAtomic :: (Show a) => BSTNewAtomic a -> [String]
+drawBSTNewAtomic = go
+  where
+    go (BSTNewEq x1 x2) = ["Eq"] ++ drawGenericSubTree drawBSTNewTerm [x1,x2]
+    go (BSTNewIn x1 x2) = ["In"] ++ drawGenericSubTree drawBSTNewTerm [x1,x2]
+    go (BSTNewIsOrdinal x1) = ["IsOrdinal"] ++ drawGenericSubTree drawBSTNewTerm [x1]
+
+drawBSTNew :: (Show a) => BSTNew a -> [String]
+drawBSTNew = go
+  where
+    go (BSTNewAtom x1) = drawBSTNewAtomic x1
+    go (BSTNewAnd x1 x2) = ["And"] ++ drawGenericSubTree drawBSTNew [x1,x2]
+    go (BSTNewOr x1 x2) = ["Or"] ++ drawGenericSubTree drawBSTNew [x1,x2]
+    go (BSTNewImplies x1 x2) = ["Implies"] ++ drawGenericSubTree drawBSTNew [x1,x2]
+    go (BSTNewIff x1 x2) = ["Iff"] ++ drawGenericSubTree drawBSTNew [x1,x2]
+    go (BSTNewNot x1) = ["Not"] ++ drawGenericSubTree drawBSTNew [x1]
+    go (BSTNewForAll x1 x2) = ["For all " ++ show x1] ++ drawGenericSubTree drawBSTNew [x2]
+    go (BSTNewExists x1 x2) = ["Exists " ++ show x1] ++ drawGenericSubTree drawBSTNew [x2]
+
+instance (Show a) => Show (BSTNewTerm a) where
+  show = unlines . drawBSTNewTerm
+
+instance (Show a) => Show (BSTNewAtomic a) where
+  show = unlines . drawBSTNewAtomic
+
+instance (Show a) => Show (BSTNew a) where
+  show = unlines . drawBSTNew
+
+lexerBSTNew :: TokenParser ()
+lexerBSTNew = makeTokenParser languageDef
   where
     languageDef =
       emptyDef { commentStart = "/*"
@@ -57,91 +105,112 @@ lexerBST = makeTokenParser languageDef
                                  , "In"
                                  , "IsOrdinal"
                                  , "PowerSet"
-                                 , "BinaryUnion"
+                                 , "BinUnion"
                                  ]
                , reservedOpNames = [ "&&", "||", "->", "<->" ]
                }
-parseBSTTerm :: Parser (BSTTerm String)
-parseBSTTerm = parseBSTVar
-    <|> parseBSTEmpty
-    <|> parseBSTPowerSet
-    <|> parseBSTBinaryUnion
+
+parseBSTNewTerm :: Parser (BSTNewTerm String)
+parseBSTNewTerm = parseBSTNewVar
+    <|> parseBSTNewEmpty
+    <|> parseBSTNewPowerSet
+    <|> parseBSTNewBinUnion
   where
-    parseBSTVar = do
-      v <- indentifier lexerBST
-      return $ BSTVar v
+    parseBSTNewVar = do
+      v <- identifier lexerBSTNew
+      return $ BSTNewVar v
 
-    parseBSTEmpty = do
-      reserved lexerBST "Empty"
-      return BSTEmpty
+    parseBSTNewEmpty = do
+      reserved lexerBSTNew "Empty"
+      return BSTNewEmpty
 
-    parseBSTPowerSet do
-      reserved lexerBST "PowerSet"
+    parseBSTNewPowerSet = do
+      reserved lexerBSTNew "PowerSet"
       char '('
-      whiteSpace lexerBST
-      x1 <- parseBSTTerm
+      whiteSpace lexerBSTNew
+      x1 <- parseBSTNewTerm
       char ')'
-      whiteSpace lexerBST
-      return $ BSTPowerSet x1
+      whiteSpace lexerBSTNew
+      return $ BSTNewPowerSet x1
 
-    parseBSTBinaryUnion do
-      reserved lexerBST "BinaryUnion"
+    parseBSTNewBinUnion = do
+      reserved lexerBSTNew "BinUnion"
       char '('
-      whiteSpace lexerBST
-      x1 <- parseBSTTerm
+      whiteSpace lexerBSTNew
+      x1 <- parseBSTNewTerm
       char ','
-      whiteSpace lexerBST
-      x2 <- parseBSTTerm
+      whiteSpace lexerBSTNew
+      x2 <- parseBSTNewTerm
       char ')'
-      whiteSpace lexerBST
-      return $ BSTBinaryUnion x1 x2
+      whiteSpace lexerBSTNew
+      return $ BSTNewBinUnion x1 x2
 
-parseBSTAtomic :: Parser (BSTAtomic String)
-parseBSTAtomic =
-    parseBSTEq
-    <|> parseBSTIn
-    <|> parseBSTIsOrdinal
+
+parseBSTNewAtomic :: Parser (BSTNewAtomic String)
+parseBSTNewAtomic =
+    parseBSTNewEq
+    <|> parseBSTNewIn
+    <|> parseBSTNewIsOrdinal
   where
-    parseBSTIn = do
-      reserved lexerBST "In"
+    parseBSTNewEq = do
+      reserved lexerBSTNew "Eq"
       char '('
-      whiteSpace lexerBST
-      x1 <- parseBSTTerm
+      whiteSpace lexerBSTNew
+      x1 <- parseBSTNewTerm
       char ','
-      whiteSpace lexerBST
-      x2 <- parseBSTTerm
+      whiteSpace lexerBSTNew
+      x2 <- parseBSTNewTerm
       char ')'
-      whiteSpace lexerBST
-      return $ BSTIn x1 x2
+      whiteSpace lexerBSTNew
+      return $ BSTNewEq x1 x2
 
-    parseBSTIsOrdinal = do
-      reserved lexerBST "IsOrdinal"
+    parseBSTNewIn = do
+      reserved lexerBSTNew "In"
       char '('
-      whiteSpace lexerBST
-      x1 <- parseBSTTerm
+      whiteSpace lexerBSTNew
+      x1 <- parseBSTNewTerm
+      char ','
+      whiteSpace lexerBSTNew
+      x2 <- parseBSTNewTerm
       char ')'
-      whiteSpace lexerBST
-      return $ BSTIsOrdinal x1
+      whiteSpace lexerBSTNew
+      return $ BSTNewIn x1 x2
 
-parseBST :: Parser (BST String)
-parseBST = (flip buildExpressionParser) parseBST' $ [
-    [ Prefix (reserved lexerBST "Not" >> return BSTNot) ]
-  , [ Infix (reservedOp lexerBST "&&" >> return BSTAnd) AssocLeft ]
-  , [ Infix (reservedOp lexerBST "||" >> return BSTOr) AssocLeft ]
-  , [ Infix (reservedOp lexerBST "->" >> return BSTImplies) AssocRight
-    , Infix (reservedOp lexerBST "<->" >> return BSTIff) AssocLeft
+    parseBSTNewIsOrdinal = do
+      reserved lexerBSTNew "IsOrdinal"
+      char '('
+      whiteSpace lexerBSTNew
+      x1 <- parseBSTNewTerm
+      char ')'
+      whiteSpace lexerBSTNew
+      return $ BSTNewIsOrdinal x1
+
+
+parseBSTNew :: Parser (BSTNew String)
+parseBSTNew = (flip buildExpressionParser) parseBSTNew' $ [
+    [ Prefix (reserved lexerBSTNew "Not" >> return BSTNewNot) ]
+  , [ Infix (reservedOp lexerBSTNew "&&" >> return BSTNewAnd) AssocLeft ]
+  , [ Infix (reservedOp lexerBSTNew "||" >> return BSTNewOr) AssocLeft ]
+  , [ Infix (reservedOp lexerBSTNew "->" >> return BSTNewImplies) AssocRight
+    , Infix (reservedOp lexerBSTNew "<->" >> return BSTNewIff) AssocLeft
     ]
   ]
 
-parseBST' :: Parser (BST String)
-parseBST' = (parenslexerBST parseBST) <|> parseForAll <|> parseExists <|> parseAtom
+parseBSTNew' :: Parser (BSTNew String)
+parseBSTNew' = (parens lexerBSTNew parseBSTNew) <|> parseForAll <|> parseExists <|> parseAtom
   where
     parseAtom = do
-      x <- parseBSTAtomic
-      return $ BSTAtom x
+      x <- parseBSTNewAtomic
+      return $ BSTNewAtom x
 
     parseForAll = do
-      reserved lexerBST "ForAll"
-      x <- identifier lexerBST
-      e <- parens lexerBST parseBST
-      return $ BSTExists x e
+      reserved lexerBSTNew "ForAll"
+      x <- identifier lexerBSTNew
+      e <- parens lexerBSTNew parseBSTNew
+      return $ BSTNewForAll x e
+    parseExists = do
+      reserved lexerBSTNew "Exists"
+      x <- identifier lexerBSTNew
+      e <- parens lexerBSTNew parseBSTNew
+      return $ BSTNewExists x e
+

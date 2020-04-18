@@ -1,15 +1,15 @@
 -- A module to make ASTs for Main.hs
-module MkST (makeST) where
+module MkST where
 import System.IO
 import Control.Monad.Reader
 
-newtype Theory = Theory { name :: String
+data Theory = Theory { name :: String
                         , constants :: [String]
                         , functions :: [(String, Int)]
                         , relations :: [(String, Int)]
                         }
 
-newtype Generator a = Reader Theory a
+type Generator a = Reader Theory a
 
 main :: IO ()
 main = do
@@ -38,26 +38,61 @@ main = do
       rs = zip (words rsn) (fmap read (words rsa))
       fs = zip (words fsn) (fmap read (words fsa))
 
-  let syntaxTree = makeST name cs rs fs
-  let parser = mkLexer name cs rs fs ++
-               mkTermParser name cs rs fs ++
-               mkAtomicParser name cs rs fs ++
-               mkParser name cs rs fs
+  let syntaxTree = makeTermData name cs rs fs ++ "\n" ++
+                   makeAtomicData name cs rs fs ++ "\n" ++
+                   makeData name cs rs fs ++ "\n" ++
+                   makeTermPrettyPrinter name cs rs fs ++ "\n" ++
+                   makeAtomicPrettyPrinter name cs rs fs ++ "\n" ++
+                   makePrettyPrinter name cs rs fs ++ "\n" ++
+                   makeShowDefinitions name cs rs fs ++ "\n"
 
-  writeFile fname (syntaxTree ++ parser)
+  let parser = mkLexer name cs rs fs ++ "\n" ++
+               mkTermParser name cs rs fs ++ "\n" ++
+               mkAtomicParser name cs rs fs ++ "\n" ++
+               mkParser name cs rs fs ++ "\n"
 
--- {{{ Top Level Stuff TODO - all this
+  writeFile fname ((boilerplate name) ++ syntaxTree ++ parser)
 
-    bottomLines = [ ""
-                  , "    drawSubTrees []     = []"
-                  , "    drawSubTrees [t]    = \"|\" : shift \"`- \" \"   \" (draw" ++ name ++ " t)"
-                  , "    drawSubTrees (t:ts) = \"|\" : shift \"+- \" \"|  \" (draw" ++ name ++ " t) ++ drawSubTrees ts"
-                  , ""
-                  , "    shift first other = zipWith (++) (first : repeat other)"
-                  , ""
-                  , "instance (Show a) => Show (" ++ name ++ " a) where"
-                  , "  show = unlines . draw" ++ name
-                  ]
+-- {{{ Top Level Stuff
+
+boilerplate name = 
+  unlines $ [ "module " ++ name ++ " where"
+            , "import Text.Parsec"
+            , "import Text.Parsec.String"
+            , "import Text.Parsec.Token"
+            , "import Text.Parsec.Language"
+            , "import Text.Parsec.Expr"
+            , ""
+            , "drawGenericSubTree :: (a -> [String]) -> [a] -> [String]"
+            , "drawGenericSubTree drawTree = go"
+            , "  where"
+            , "    go [] = []"
+            , "    go [t] = \"|\" : shift \"`- \" \"   \" (drawTree t)"
+            , "    go (t:ts) = \"|\" : shift \"+ \" \"|  \" (drawTree t) ++ go ts"
+            , ""
+            , "    shift first other = zipWith (++) (first : repeat other)"
+            , ""
+            , ""
+            , "parseInput :: Parser (" ++ name ++ " String)"
+            , "parseInput = do"
+            , "  whiteSpace lexer" ++ name
+            , "  e <- parse" ++ name
+            , "  eof"
+            , "  return e"
+            , ""
+            , "convert :: String -> String"
+            , "convert s ="
+            , "  case ret of"
+            , "    Left e -> \"error: \" ++ (show e)"
+            , "    Right v -> \"answer: \\n\" ++ (show v)"
+            , "  where"
+            , "    ret = parse parseInput \"\" s"
+            , ""
+            , "main :: IO ()"
+            , "main = interact (unlines . (map convert) . lines)"
+            , ""
+            ]
+
 
 -- }}}
 
@@ -67,9 +102,9 @@ makeTermData :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> Stri
 makeTermData name cs rs fs = unlines $ topLine ++ constLines ++ funLines
   where
     padding = take (length name + 12) $ repeat ' '
-    prefix = padding + "| "
+    prefix = padding ++ "| "
 
-    mkArgs n = concat $ take n $ repeat $ " (" ++ name ++ " a)"
+    mkArgs n = concat $ take n $ repeat $ " (" ++ name ++ "Term a)"
     mkLine (symbol, arity) = prefix ++ name ++ symbol ++ (mkArgs arity)
 
     topLine = ["data " ++ name ++ "Term a = " ++ name ++ "Var a"]
@@ -79,12 +114,12 @@ makeTermData name cs rs fs = unlines $ topLine ++ constLines ++ funLines
     funLines = fmap mkLine fs
 
 makeAtomicData :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makeAtomicData name cs rs fs = unlines $$ topLine ++ relLines
+makeAtomicData name cs rs fs = unlines $ topLine ++ relLines
   where
     padding = take (length name + 13) $ repeat ' '
-    prefix = padding + "| "
+    prefix = padding ++ "| "
 
-    mkArgs n = concat $ take n $ repeat $ " (" ++ name ++ " a)"
+    mkArgs n = concat $ take n $ repeat $ " (" ++ name ++ "Term a)"
     mkLine (symbol, arity) = prefix ++ name ++ symbol ++ (mkArgs arity)
 
     topLine = ["data " ++ name ++ "Atomic a = " ++ name ++ "Eq (" ++ name ++ "Term a) (" ++ name ++ "Term a)"]
@@ -102,15 +137,14 @@ makeData name cs rs fs = unlines $ topLine ++ logicLines
 
     topLine = ["data " ++ name ++ " a = " ++ name ++ "Atom (" ++ name ++ "Atomic a)"]
 
-    logicLines = [ mkLine ("Eq", 2)
-                , mkLine ("And", 2)
-                , mkLine ("Or", 2)
-                , mkLine ("Implies", 2)
-                , mkLine ("Iff", 2)
-                , mkLine ("Not", 1)
-                , mkLine ("ForAll a", 1)
-                , mkLine ("Exists a", 1)
-                ]
+    logicLines = [ mkLine ("And", 2)
+                 , mkLine ("Or", 2)
+                 , mkLine ("Implies", 2)
+                 , mkLine ("Iff", 2)
+                 , mkLine ("Not", 1)
+                 , mkLine ("ForAll a", 1)
+                 , mkLine ("Exists a", 1)
+                 ]
   
 makeTermPrettyPrinter :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
 makeTermPrettyPrinter name cs rs fs = unlines $ topLines ++ constLines ++ funLines ++ [""]
@@ -135,7 +169,7 @@ makeTermPrettyPrinter name cs rs fs = unlines $ topLines ++ constLines ++ funLin
     funLines = fmap mkLine fs
 
 makeAtomicPrettyPrinter :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makeAtomicPrettyPrinter name cs rs fs = unlines $ topLines ++ logicLines
+makeAtomicPrettyPrinter name cs rs fs = unlines $ topLines ++ relLines
   where
     prefix = "    go "
 
@@ -170,6 +204,7 @@ makePrettyPrinter name cs rs fs = unlines $ topLines ++ logicLines
     topLines = [ "draw" ++ name ++ " :: (Show a) => " ++ name ++ " a -> [String]"
                , "draw" ++ name ++ " = go"
                , "  where"
+               , "    go (" ++ name ++ "Atom x1) = draw" ++ name ++ "Atomic x1"
                ]
 
     logicLines = [ mkLine ("And", 2)
@@ -181,9 +216,17 @@ makePrettyPrinter name cs rs fs = unlines $ topLines ++ logicLines
                  , "    go (" ++ name ++ "Exists x1 x2) = [\"Exists \" ++ show x1] ++ drawGenericSubTree draw" ++ name ++ " [x2]"
                  ]
     
-
-makeST :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makeST name cs rs fs = (makeData name cs rs fs) ++ "\n\n" ++ (makePrettyPrinter name cs rs fs)
+makeShowDefinitions :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
+makeShowDefinitions name cs rs fs = unlines 
+  [ "instance (Show a) => Show (" ++ name ++ "Term a) where"
+  , "  show = unlines . draw" ++ name ++ "Term"
+  , ""
+  , "instance (Show a) => Show (" ++ name ++ "Atomic a) where"
+  , "  show = unlines . draw" ++ name ++ "Atomic"
+  , ""
+  , "instance (Show a) => Show (" ++ name ++ " a) where"
+  , "  show = unlines . draw" ++ name
+  ]
 
 -- }}}
 
@@ -231,7 +274,7 @@ mkTermParser name cs rs fs = unlines $ header ++ otherCases ++ whereVar ++ const
 
     whereVar = [ "  where"
                , "    parse" ++ name ++ "Var = do"
-               , "      v <- indentifier lexer" ++ name
+               , "      v <- identifier lexer" ++ name
                , "      return $ " ++ name ++ "Var v"
                , ""
                ]
@@ -257,7 +300,7 @@ mkTermParser name cs rs fs = unlines $ header ++ otherCases ++ whereVar ++ const
 
         vars n = concat $ fmap (\i -> " x" ++ show i) [1..n]
 
-        mkDefn (f,n) = [ "    parse" ++ name ++ f ++ " do" 
+        mkDefn (f,n) = [ "    parse" ++ name ++ f ++ " = do" 
                        , "      reserved lexer" ++ name ++ " \"" ++ f ++ "\""
                        , "      char \'(\'"
                        , "      whiteSpace lexer" ++ name
@@ -275,7 +318,7 @@ mkAtomicParser name cs rs fs = unlines $ header ++ otherCases ++ ["  where"] ++ 
       where
         mkCase (r,_) = "    <|> parse" ++ name ++ r
 
-    otherDefinitions = concat $ fmap mkDefn rs
+    otherDefinitions = concat $ fmap mkDefn $ ("Eq", 2) : rs
       where
         mkLine [n]    = [ "      x" ++ (show n) ++ " <- parse" ++ name ++ "Term"
                         , "      char \')\'"
@@ -312,7 +355,7 @@ mkParser name cs rs fs = unlines wholeThing
                  , "  ]"
                  , ""
                  , "parse" ++ name ++ "' :: Parser (" ++ name ++ " String)"
-                 , "parse" ++ name ++ "' = (parens" ++ lexName ++ " parse" ++ name ++") <|> parseForAll <|> parseExists <|> parseAtom"
+                 , "parse" ++ name ++ "' = (parens " ++ lexName ++ " parse" ++ name ++") <|> parseForAll <|> parseExists <|> parseAtom"
                  , "  where"
                  , "    parseAtom = do"
                  , "      x <- parse" ++ name ++ "Atomic"
@@ -320,6 +363,11 @@ mkParser name cs rs fs = unlines wholeThing
                  , ""
                  , "    parseForAll = do"
                  , "      reserved " ++ lexName ++ " \"ForAll\""
+                 , "      x <- identifier " ++ lexName
+                 , "      e <- parens " ++ lexName ++ " parse" ++ name
+                 , "      return $ " ++ name ++ "ForAll x e"
+                 , "    parseExists = do"
+                 , "      reserved " ++ lexName ++ " \"Exists\""
                  , "      x <- identifier " ++ lexName
                  , "      e <- parens " ++ lexName ++ " parse" ++ name
                  , "      return $ " ++ name ++ "Exists x e"
