@@ -1,6 +1,15 @@
 -- A module to make ASTs for Main.hs
 module MkST (makeST) where
 import System.IO
+import Control.Monad.Reader
+
+newtype Theory = Theory { name :: String
+                        , constants :: [String]
+                        , functions :: [(String, Int)]
+                        , relations :: [(String, Int)]
+                        }
+
+newtype Generator a = Reader Theory a
 
 main :: IO ()
 main = do
@@ -29,69 +38,15 @@ main = do
       rs = zip (words rsn) (fmap read (words rsa))
       fs = zip (words fsn) (fmap read (words fsa))
 
-  writeFile fname (makeST name cs rs fs)
+  let syntaxTree = makeST name cs rs fs
+  let parser = mkLexer name cs rs fs ++
+               mkTermParser name cs rs fs ++
+               mkAtomicParser name cs rs fs ++
+               mkParser name cs rs fs
 
--- {{{ Make the datatype
+  writeFile fname (syntaxTree ++ parser)
 
-makeData :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makeData name cs rs fs = unlines $ topLine ++ logicLines ++ constLines ++ relLines ++ funLines ++ bottomLine
-  where
-    padding = take (length name + 8) $ repeat ' '
-    prefix = padding ++ "| "
-
-    mkArgs n = concat $ take n $ repeat $ " (" ++ name ++ " a)"
-    mkLine (symbol, arity) = prefix ++ name ++ symbol ++ (mkArgs arity)
-
-    topLine = ["data " ++ name ++ " a = " ++ name ++ "Var a"]
-
-    logicLines = [ mkLine ("Eq", 2)
-                , mkLine ("And", 2)
-                , mkLine ("Or", 2)
-                , mkLine ("Implies", 2)
-                , mkLine ("Iff", 2)
-                , mkLine ("Not", 1)
-                , mkLine ("ForAll a", 1)
-                , mkLine ("Exists a", 1)
-                ]
-
-    constLines = fmap (\c -> mkLine (c,0)) cs
-    relLines   = fmap mkLine rs
-    funLines   = fmap mkLine fs
-
-    bottomLine = []
-  
-makePrettyPrinter :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makePrettyPrinter name cs rs fs = unlines $ concat full
-  where
-    prefix = "    go "
-
-    mkArgs n = concat $ take n $ map (" x"++) $ map show [1..]
-    mkTreeArgs n = drop 1 $ concat $ take n $ map (",x"++) $ map show [1..]
-
-    mkLine (symbol, arity) = pattern ++ " = " ++ call
-      where
-        pattern = prefix ++ "(" ++ name ++ symbol ++ (mkArgs arity) ++ ")"
-        call = "[\"" ++ symbol ++ "\"]" ++ " ++ drawSubTrees [" ++ (mkTreeArgs arity) ++ "]"
-
-    topLines = [ "draw" ++ name ++ " :: (Show a) => " ++ name ++ " a -> [String]"
-               , "draw" ++ name ++ " = go"
-               , "  where"
-               , "    go (" ++ name ++ "Var x) = [show x]"
-               ]
-    
-    logicLines = [ mkLine ("Eq", 2)
-                , mkLine ("And", 2)
-                , mkLine ("Or", 2)
-                , mkLine ("Implies", 2)
-                , mkLine ("Iff", 2)
-                , mkLine ("Not", 1)
-                , "    go (" ++ name ++ "ForAll x1 x2) = [\"For all \" ++ show x1] ++ drawSubTrees [x2]"
-                , "    go (" ++ name ++ "Exists x1 x2) = [\"For all \" ++ show x1] ++ drawSubTrees [x2]"
-                ]
-
-    constLines = fmap (\c -> prefix ++ "(" ++ name ++ c ++ ") = [\"" ++ c ++ "\"]") cs
-    relLines   = fmap mkLine rs
-    funLines   = fmap mkLine fs
+-- {{{ Top Level Stuff TODO - all this
 
     bottomLines = [ ""
                   , "    drawSubTrees []     = []"
@@ -104,7 +59,128 @@ makePrettyPrinter name cs rs fs = unlines $ concat full
                   , "  show = unlines . draw" ++ name
                   ]
 
-    full = [topLines, logicLines, constLines, relLines, funLines, bottomLines]
+-- }}}
+
+-- {{{ Make the datatype
+
+makeTermData :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
+makeTermData name cs rs fs = unlines $ topLine ++ constLines ++ funLines
+  where
+    padding = take (length name + 12) $ repeat ' '
+    prefix = padding + "| "
+
+    mkArgs n = concat $ take n $ repeat $ " (" ++ name ++ " a)"
+    mkLine (symbol, arity) = prefix ++ name ++ symbol ++ (mkArgs arity)
+
+    topLine = ["data " ++ name ++ "Term a = " ++ name ++ "Var a"]
+
+    constLines = fmap (\c -> prefix ++ name ++ c) cs
+
+    funLines = fmap mkLine fs
+
+makeAtomicData :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
+makeAtomicData name cs rs fs = unlines $$ topLine ++ relLines
+  where
+    padding = take (length name + 13) $ repeat ' '
+    prefix = padding + "| "
+
+    mkArgs n = concat $ take n $ repeat $ " (" ++ name ++ " a)"
+    mkLine (symbol, arity) = prefix ++ name ++ symbol ++ (mkArgs arity)
+
+    topLine = ["data " ++ name ++ "Atomic a = " ++ name ++ "Eq (" ++ name ++ "Term a) (" ++ name ++ "Term a)"]
+
+    relLines = fmap mkLine rs
+
+makeData :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
+makeData name cs rs fs = unlines $ topLine ++ logicLines
+  where
+    padding = take (length name + 8) $ repeat ' '
+    prefix = padding ++ "| "
+
+    mkArgs n = concat $ take n $ repeat $ " (" ++ name ++ " a)"
+    mkLine (symbol, arity) = prefix ++ name ++ symbol ++ (mkArgs arity)
+
+    topLine = ["data " ++ name ++ " a = " ++ name ++ "Atom (" ++ name ++ "Atomic a)"]
+
+    logicLines = [ mkLine ("Eq", 2)
+                , mkLine ("And", 2)
+                , mkLine ("Or", 2)
+                , mkLine ("Implies", 2)
+                , mkLine ("Iff", 2)
+                , mkLine ("Not", 1)
+                , mkLine ("ForAll a", 1)
+                , mkLine ("Exists a", 1)
+                ]
+  
+makeTermPrettyPrinter :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
+makeTermPrettyPrinter name cs rs fs = unlines $ topLines ++ constLines ++ funLines ++ [""]
+  where
+    prefix = "    go "
+
+    mkArgs n = concat $ take n $ map (" x"++) $ map show [1..]
+    mkTreeArgs n = drop 1 $ concat $ take n $ map (",x"++) $ map show [1..]
+
+    mkLine (symbol, arity) = pattern ++ " = " ++ call
+      where
+        pattern = prefix ++ "(" ++ name ++ symbol ++ (mkArgs arity) ++ ")"
+        call = "[\"" ++ symbol ++ "\"]" ++ " ++ drawGenericSubTree draw" ++ name ++ "Term [" ++ (mkTreeArgs arity) ++ "]"
+
+    topLines = [ "draw" ++ name ++ "Term :: (Show a) => " ++ name ++ "Term a -> [String]" 
+               , "draw" ++ name ++ "Term = go"
+               , "  where"
+               , "    go (" ++ name ++ "Var x) = [show x]"
+               ]
+
+    constLines = fmap (\c -> prefix ++ "(" ++ name ++ c ++ ") = [\"" ++ c ++ "\"]") cs
+    funLines = fmap mkLine fs
+
+makeAtomicPrettyPrinter :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
+makeAtomicPrettyPrinter name cs rs fs = unlines $ topLines ++ logicLines
+  where
+    prefix = "    go "
+
+    mkArgs n = concat $ take n $ map (" x"++) $ map show [1..]
+    mkTreeArgs n = drop 1 $ concat $ take n $ map (",x"++) $ map show [1..]
+
+    mkLine (symbol, arity) = pattern ++ " = " ++ call
+      where
+        pattern = prefix ++ "(" ++ name ++ symbol ++ (mkArgs arity) ++ ")"
+        call = "[\"" ++ symbol ++ "\"]" ++ " ++ drawGenericSubTree draw" ++ name ++ "Term [" ++ (mkTreeArgs arity) ++ "]"
+
+    topLines = [ "draw" ++ name ++ "Atomic :: (Show a) => " ++ name ++ "Atomic a -> [String]"
+               , "draw" ++ name ++ "Atomic = go"
+               , "  where"
+               ]
+
+    relLines = fmap mkLine $ ("Eq", 2) : rs
+
+makePrettyPrinter :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
+makePrettyPrinter name cs rs fs = unlines $ topLines ++ logicLines
+  where
+    prefix = "    go "
+
+    mkArgs n = concat $ take n $ map (" x"++) $ map show [1..]
+    mkTreeArgs n = drop 1 $ concat $ take n $ map (",x"++) $ map show [1..]
+
+    mkLine (symbol, arity) = pattern ++ " = " ++ call
+      where
+        pattern = prefix ++ "(" ++ name ++ symbol ++ (mkArgs arity) ++ ")"
+        call = "[\"" ++ symbol ++ "\"]" ++ " ++ drawGenericSubTree draw" ++ name ++ " [" ++ (mkTreeArgs arity) ++ "]"
+
+    topLines = [ "draw" ++ name ++ " :: (Show a) => " ++ name ++ " a -> [String]"
+               , "draw" ++ name ++ " = go"
+               , "  where"
+               ]
+
+    logicLines = [ mkLine ("And", 2)
+                 , mkLine ("Or", 2)
+                 , mkLine ("Implies", 2)
+                 , mkLine ("Iff", 2)
+                 , mkLine ("Not", 1)
+                 , "    go (" ++ name ++ "ForAll x1 x2) = [\"For all \" ++ show x1] ++ drawGenericSubTree draw" ++ name ++ " [x2]"
+                 , "    go (" ++ name ++ "Exists x1 x2) = [\"Exists \" ++ show x1] ++ drawGenericSubTree draw" ++ name ++ " [x2]"
+                 ]
+    
 
 makeST :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
 makeST name cs rs fs = (makeData name cs rs fs) ++ "\n\n" ++ (makePrettyPrinter name cs rs fs)
