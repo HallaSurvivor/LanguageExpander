@@ -2,12 +2,13 @@
 module MkST where
 import System.IO
 import Control.Monad.Reader
+import Text.Printf
 
 data Theory = Theory { name :: String
-                        , constants :: [String]
-                        , functions :: [(String, Int)]
-                        , relations :: [(String, Int)]
-                        }
+                     , constants :: [String]
+                     , functions :: [(String, Int)]
+                     , relations :: [(String, Int)]
+                     }
 
 type Generator a = Reader Theory a
 
@@ -38,18 +39,14 @@ main = do
       rs = zip (words rsn) (fmap read (words rsa))
       fs = zip (words fsn) (fmap read (words fsa))
 
-  let syntaxTree = makeTermData name cs rs fs ++ "\n" ++
-                   makeAtomicData name cs rs fs ++ "\n" ++
-                   makeData name cs rs fs ++ "\n" ++
-                   makeTermPrettyPrinter name cs rs fs ++ "\n" ++
-                   makeAtomicPrettyPrinter name cs rs fs ++ "\n" ++
-                   makePrettyPrinter name cs rs fs ++ "\n" ++
-                   makeShowDefinitions name cs rs fs ++ "\n"
+  let syntaxTree = unlines [mkDataTypes name cs rs fs, mkPrettyPrinter name cs rs fs]
 
   let parser = mkLexer name cs rs fs ++ "\n" ++
                mkTermParser name cs rs fs ++ "\n" ++
                mkAtomicParser name cs rs fs ++ "\n" ++
                mkParser name cs rs fs ++ "\n"
+
+  putStrLn syntaxTree
 
   writeFile fname ((boilerplate name) ++ syntaxTree ++ parser)
 
@@ -98,135 +95,89 @@ boilerplate name =
 
 -- {{{ Make the datatype
 
-makeTermData :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makeTermData name cs rs fs = unlines $ topLine ++ constLines ++ funLines
+mkDataTypes :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
+mkDataTypes name cs rs fs = unlines $ [terms, atomics, formulas]
   where
-    padding = take (length name + 12) $ repeat ' '
-    prefix = padding ++ "| "
+    mkLine label (symbol, arity) = "  | " ++ name ++ symbol ++ mkArgs
+      where
+        mkArgs = concat $ take arity $ repeat $ printf " (%s%s a)" name label
 
-    mkArgs n = concat $ take n $ repeat $ " (" ++ name ++ "Term a)"
-    mkLine (symbol, arity) = prefix ++ name ++ symbol ++ (mkArgs arity)
+    terms = unlines $ 
+      [ printf "data %sTerm a =" name
+      , printf "    %sVar a" name
+      ] ++ 
+      (fmap (mkLine "Term") $ zip cs (repeat 0)) ++
+      fmap (mkLine "Term") fs
 
-    topLine = ["data " ++ name ++ "Term a = " ++ name ++ "Var a"]
+    atomics = unlines $ 
+      [ printf "data %sAtomic a =" name
+      , printf "    %sEq (%sTerm a) (%sTerm a)" name name name
+      ] ++ 
+      fmap (mkLine "Term") rs
 
-    constLines = fmap (\c -> prefix ++ name ++ c) cs
-
-    funLines = fmap mkLine fs
-
-makeAtomicData :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makeAtomicData name cs rs fs = unlines $ topLine ++ relLines
-  where
-    padding = take (length name + 13) $ repeat ' '
-    prefix = padding ++ "| "
-
-    mkArgs n = concat $ take n $ repeat $ " (" ++ name ++ "Term a)"
-    mkLine (symbol, arity) = prefix ++ name ++ symbol ++ (mkArgs arity)
-
-    topLine = ["data " ++ name ++ "Atomic a = " ++ name ++ "Eq (" ++ name ++ "Term a) (" ++ name ++ "Term a)"]
-
-    relLines = fmap mkLine rs
-
-makeData :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makeData name cs rs fs = unlines $ topLine ++ logicLines
-  where
-    padding = take (length name + 8) $ repeat ' '
-    prefix = padding ++ "| "
-
-    mkArgs n = concat $ take n $ repeat $ " (" ++ name ++ " a)"
-    mkLine (symbol, arity) = prefix ++ name ++ symbol ++ (mkArgs arity)
-
-    topLine = ["data " ++ name ++ " a = " ++ name ++ "Atom (" ++ name ++ "Atomic a)"]
-
-    logicLines = [ mkLine ("And", 2)
-                 , mkLine ("Or", 2)
-                 , mkLine ("Implies", 2)
-                 , mkLine ("Iff", 2)
-                 , mkLine ("Not", 1)
-                 , mkLine ("ForAll a", 1)
-                 , mkLine ("Exists a", 1)
-                 ]
+    formulas = unlines $
+      [ printf "data %s a = %sAtom (%sAtomic a)" name name name
+      , mkLine "" ("And", 2)
+      , mkLine "" ("Or", 2)
+      , mkLine "" ("Implies", 2)
+      , mkLine "" ("Iff", 2)
+      , mkLine "" ("Not", 1)
+      , mkLine "" ("ForAll a", 1)
+      , mkLine "" ("Exists a", 1)
+      ]
   
-makeTermPrettyPrinter :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makeTermPrettyPrinter name cs rs fs = unlines $ topLines ++ constLines ++ funLines ++ [""]
+mkPrettyPrinter :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
+mkPrettyPrinter name cs rs fs = unlines $ [terms, atomics, formulas, showDefns]
   where
-    prefix = "    go "
-
-    mkArgs n = concat $ take n $ map (" x"++) $ map show [1..]
-    mkTreeArgs n = drop 1 $ concat $ take n $ map (",x"++) $ map show [1..]
-
-    mkLine (symbol, arity) = pattern ++ " = " ++ call
+    mkLine (symbol, arity) = 
+        printf "    go (%s%s%s) = [\"%s\"] ++ draw [%s]" name symbol args symbol treeArgs
       where
-        pattern = prefix ++ "(" ++ name ++ symbol ++ (mkArgs arity) ++ ")"
-        call = "[\"" ++ symbol ++ "\"]" ++ " ++ drawGenericSubTree draw" ++ name ++ "Term [" ++ (mkTreeArgs arity) ++ "]"
+        args = concat $ take arity $ map (" x"++) $ map show [1..]
+        treeArgs = drop 1 $ concat $ take arity $ map (",x"++) $ map show [1..]
 
-    topLines = [ "draw" ++ name ++ "Term :: (Show a) => " ++ name ++ "Term a -> [String]" 
-               , "draw" ++ name ++ "Term = go"
-               , "  where"
-               , "    go (" ++ name ++ "Var x) = [show x]"
-               ]
+    terms = unlines $
+      [ printf "draw%sTerm :: (Show a) => %sTerm a -> [String]" name name
+      , printf "draw%sTerm = go" name
+      , "  where"
+      , printf "    draw = drawGenericSubTree draw%sTerm" name
+      , printf "    go (%sVar x) = [show x]" name
+      ] ++
+      (fmap (\c -> printf "    go (%s%s) = [\"%s\"]" name c c) cs) ++ 
+      fmap mkLine fs
 
-    constLines = fmap (\c -> prefix ++ "(" ++ name ++ c ++ ") = [\"" ++ c ++ "\"]") cs
-    funLines = fmap mkLine fs
+    atomics = unlines $
+      [ printf "draw%sAtomic :: (Show a) => %sAtomic a -> [String]" name name
+      , printf "draw%sAtomic = go" name
+      , "  where"
+      , printf "    draw = drawGenericSubTree draw%sTerm" name
+      ] ++
+      (fmap mkLine $ ("Eq", 2) : rs)
 
-makeAtomicPrettyPrinter :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makeAtomicPrettyPrinter name cs rs fs = unlines $ topLines ++ relLines
-  where
-    prefix = "    go "
+    formulas = unlines
+      [ printf "draw%s :: (Show a) => %s a -> [String]" name name
+      , printf "draw%s = go" name
+      , "  where"
+      , printf "    draw = drawGenericSubTree draw%s" name
+      , printf "    go (%sAtom x1) = draw%sAtomic x1" name name
+      , mkLine ("And", 2)
+      , mkLine ("Or", 2)
+      , mkLine ("Implies", 2)
+      , mkLine ("Iff", 2)
+      , mkLine ("Not", 1)
+      , printf "    go (%sForAll x1 x2) = [\"ForAll \" ++ show x1] ++ draw [x2]" name
+      , printf "    go (%sExists x1 x2) = [\"Exists \" ++ show x1] ++ draw [x2]" name
+      ]
 
-    mkArgs n = concat $ take n $ map (" x"++) $ map show [1..]
-    mkTreeArgs n = drop 1 $ concat $ take n $ map (",x"++) $ map show [1..]
-
-    mkLine (symbol, arity) = pattern ++ " = " ++ call
-      where
-        pattern = prefix ++ "(" ++ name ++ symbol ++ (mkArgs arity) ++ ")"
-        call = "[\"" ++ symbol ++ "\"]" ++ " ++ drawGenericSubTree draw" ++ name ++ "Term [" ++ (mkTreeArgs arity) ++ "]"
-
-    topLines = [ "draw" ++ name ++ "Atomic :: (Show a) => " ++ name ++ "Atomic a -> [String]"
-               , "draw" ++ name ++ "Atomic = go"
-               , "  where"
-               ]
-
-    relLines = fmap mkLine $ ("Eq", 2) : rs
-
-makePrettyPrinter :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makePrettyPrinter name cs rs fs = unlines $ topLines ++ logicLines
-  where
-    prefix = "    go "
-
-    mkArgs n = concat $ take n $ map (" x"++) $ map show [1..]
-    mkTreeArgs n = drop 1 $ concat $ take n $ map (",x"++) $ map show [1..]
-
-    mkLine (symbol, arity) = pattern ++ " = " ++ call
-      where
-        pattern = prefix ++ "(" ++ name ++ symbol ++ (mkArgs arity) ++ ")"
-        call = "[\"" ++ symbol ++ "\"]" ++ " ++ drawGenericSubTree draw" ++ name ++ " [" ++ (mkTreeArgs arity) ++ "]"
-
-    topLines = [ "draw" ++ name ++ " :: (Show a) => " ++ name ++ " a -> [String]"
-               , "draw" ++ name ++ " = go"
-               , "  where"
-               , "    go (" ++ name ++ "Atom x1) = draw" ++ name ++ "Atomic x1"
-               ]
-
-    logicLines = [ mkLine ("And", 2)
-                 , mkLine ("Or", 2)
-                 , mkLine ("Implies", 2)
-                 , mkLine ("Iff", 2)
-                 , mkLine ("Not", 1)
-                 , "    go (" ++ name ++ "ForAll x1 x2) = [\"For all \" ++ show x1] ++ drawGenericSubTree draw" ++ name ++ " [x2]"
-                 , "    go (" ++ name ++ "Exists x1 x2) = [\"Exists \" ++ show x1] ++ drawGenericSubTree draw" ++ name ++ " [x2]"
-                 ]
-    
-makeShowDefinitions :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-makeShowDefinitions name cs rs fs = unlines 
-  [ "instance (Show a) => Show (" ++ name ++ "Term a) where"
-  , "  show = unlines . draw" ++ name ++ "Term"
-  , ""
-  , "instance (Show a) => Show (" ++ name ++ "Atomic a) where"
-  , "  show = unlines . draw" ++ name ++ "Atomic"
-  , ""
-  , "instance (Show a) => Show (" ++ name ++ " a) where"
-  , "  show = unlines . draw" ++ name
-  ]
+    showDefns = unlines
+      [ printf "instance (Show a) => Show (%sTerm a) where" name
+      , printf "  show = unlines . draw%sTerm" name
+      , ""
+      , printf "instance (Show a) => Show (%sAtomic a) where" name
+      , printf "  show = unlines . draw%sAtomic" name
+      , ""
+      , printf "instance (Show a) => Show (%s a) where" name
+      , printf "  show = unlines . draw%s" name
+      ]
 
 -- }}}
 
