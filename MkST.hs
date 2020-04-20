@@ -41,12 +41,7 @@ main = do
 
   let syntaxTree = unlines [mkDataTypes name cs rs fs, mkPrettyPrinter name cs rs fs]
 
-  let parser = mkLexer name cs rs fs ++ "\n" ++
-               mkTermParser name cs rs fs ++ "\n" ++
-               mkAtomicParser name cs rs fs ++ "\n" ++
-               mkParser name cs rs fs ++ "\n"
-
-  putStrLn syntaxTree
+  let parser = unlines [mkLexer name cs rs fs, mkParsers name cs rs fs]
 
   writeFile fname ((boilerplate name) ++ syntaxTree ++ parser)
 
@@ -184,145 +179,114 @@ mkPrettyPrinter name cs rs fs = unlines $ [terms, atomics, formulas, showDefns]
 -- {{{ Make the parser
 
 mkLexer :: String -> [String] -> [(String,Int)] -> [(String,Int)] -> String
-mkLexer name cs rs fs = unlines $ header ++ reservedNames ++ footer
+mkLexer name cs rs fs = unlines $ 
+  [ "lexer" ++ name ++ " :: TokenParser ()"
+  , "lexer" ++ name ++ " = makeTokenParser languageDef"
+  , "  where"
+  , "    languageDef ="
+  , "      emptyDef { commentStart = \"/*\""
+  , "               , commentEnd = \"*/\""
+  , "               , commentLine = \"//\""
+  , "               , identStart = letter"
+  , "               , identLetter = alphaNum"
+  , "               , reservedNames = [ \"Eq\""
+  , "                                 , \"Not\""
+  , "                                 , \"ForAll\""
+  , "                                 , \"Exists\""
+  ] ++ 
+  (
+    fmap (printf "                                 , \"%s\"") $ 
+      cs ++ map fst rs ++ map fst fs
+  ) ++
+  [ "                                 ]"
+  , "               , reservedOpNames = [ \"&&\", \"||\", \"->\", \"<->\" ]"
+  , "               }"
+  ]
+
+mkParsers :: String -> [String] -> [(String,Int)] -> [(String, Int)] -> String
+mkParsers name cs rs fs = unlines $ [terms, atomics, formulas]
   where
-    header = [ "lexer" ++ name ++ " :: TokenParser ()"
-             , "lexer" ++ name ++ " = makeTokenParser languageDef"
-             , "  where"
-             , "    languageDef ="
-             , "      emptyDef { commentStart = \"/*\""
-             , "               , commentEnd = \"*/\""
-             , "               , commentLine = \"//\""
-             , "               , identStart = letter"
-             , "               , identLetter = alphaNum"
-             , "               , reservedNames = [ \"Eq\""
-             , "                                 , \"Not\""
-             , "                                 , \"ForAll\""
-             , "                                 , \"Exists\""
-             ]
-
-    reservedNames = fmap (\n -> padding ++ n ++ "\"") ns
-      where
-        padding = "                                 , \""
-        ns = cs ++ map fst rs ++ map fst fs
-
-    footer = [ "                                 ]"
-             , "               , reservedOpNames = [ \"&&\", \"||\", \"->\", \"<->\" ]"
-             , "               }"
-             ]
-      
-
-mkTermParser :: String -> [String] -> [(String,Int)] -> [(String, Int)] -> String
-mkTermParser name cs rs fs = unlines $ header ++ otherCases ++ whereVar ++ constDefns ++ funDefns
-  where
-    header = [ "parse" ++ name ++ "Term :: Parser (" ++ name ++ "Term String)" 
-             , "parse" ++ name ++ "Term = parse" ++ name ++ "Var"
-             ]
-
-    otherCases = fmap mkCase (cs ++ fmap fst fs)
-      where
-        mkCase f = "    <|> parse" ++ name ++ f
-
-    whereVar = [ "  where"
-               , "    parse" ++ name ++ "Var = do"
-               , "      v <- identifier lexer" ++ name
-               , "      return $ " ++ name ++ "Var v"
-               , ""
-               ]
-
-    constDefns = concat $ fmap mkDefn cs
-      where
-        mkDefn c = [ "    parse" ++ name ++ c ++ " = do"
-                   , "      reserved lexer" ++ name ++ " \"" ++ c ++"\""
-                   , "      return " ++ name ++ c
-                   , ""
-                   ]
-
-    funDefns = concat $ fmap mkDefn fs
-      where
-        mkLine [n] = [ "      x" ++ (show n) ++ " <- parse" ++ name ++ "Term" 
-                     , "      char \')\'"
-                     , "      whiteSpace lexer" ++ name
-                     ]
-        mkLine (i:is) =  [ "      x" ++ (show i) ++ " <- parse" ++ name ++ "Term"
-                         , "      char \',\'"
-                         , "      whiteSpace lexer" ++ name
-                         ] ++ (mkLine is)
-
-        vars n = concat $ fmap (\i -> " x" ++ show i) [1..n]
-
-        mkDefn (f,n) = [ "    parse" ++ name ++ f ++ " = do" 
-                       , "      reserved lexer" ++ name ++ " \"" ++ f ++ "\""
-                       , "      char \'(\'"
-                       , "      whiteSpace lexer" ++ name
-                       ] ++ mkLine [1..n] ++ ["      return $ " ++ name ++ f ++ (vars n), ""]
-
-mkAtomicParser :: String -> [String] -> [(String,Int)] -> [(String,Int)] -> String
-mkAtomicParser name cs rs fs = unlines $ header ++ otherCases ++ ["  where"] ++ otherDefinitions
-  where
-    header = [ "parse" ++ name ++ "Atomic :: Parser (" ++ name ++ "Atomic String)"
-             , "parse" ++ name ++ "Atomic ="  
-             , "    parse" ++ name ++ "Eq"
-             ]
-
-    otherCases = fmap mkCase rs
-      where
-        mkCase (r,_) = "    <|> parse" ++ name ++ r
-
-    otherDefinitions = concat $ fmap mkDefn $ ("Eq", 2) : rs
-      where
-        mkLine [n]    = [ "      x" ++ (show n) ++ " <- parse" ++ name ++ "Term"
-                        , "      char \')\'"
-                        , "      whiteSpace lexer" ++ name
-                        ]
-        mkLine (i:is) = [ "      x" ++ (show i) ++ " <- parse" ++ name ++ "Term"
-                        , "      char \',\'"
-                        , "      whiteSpace lexer" ++ name
-                        ] ++ (mkLine is)
-
-        vars n = concat $ fmap (\i -> " x" ++ show i) [1..n]
-
-        mkDefn (r,n) = [ "    parse" ++ name ++ r ++ " = do"
-                       , "      reserved lexer" ++ name ++ " \"" ++ r ++ "\""
-                       , "      char \'(\'"
-                       , "      whiteSpace lexer" ++ name
-                       ] ++ mkLine [1..n] ++ 
-                       ["      return $ " ++ name ++ r ++ (vars n), ""]
-
-
-mkParser :: String -> [String] -> [(String,Int)] -> [(String,Int)] -> String
-mkParser name cs rs fs = unlines wholeThing
-  where
-    lexName = "lexer" ++ name
-
-    wholeThing = [ "parse" ++ name ++ " :: Parser ("++ name ++ " String)"
-                 , "parse" ++ name ++ " = (flip buildExpressionParser) parse" ++ name ++ "' $ ["
-                 , "    [ Prefix (reserved " ++ lexName ++ " \"Not\" >> return " ++ name ++ "Not) ]"
-                 , "  , [ Infix (reservedOp " ++ lexName ++ " \"&&\" >> return " ++ name ++ "And) AssocLeft ]"
-                 , "  , [ Infix (reservedOp " ++ lexName ++ " \"||\" >> return " ++ name ++ "Or) AssocLeft ]"
-                 , "  , [ Infix (reservedOp " ++ lexName ++ " \"->\" >> return " ++ name ++ "Implies) AssocRight"
-                 , "    , Infix (reservedOp " ++ lexName ++ " \"<->\" >> return " ++ name ++ "Iff) AssocLeft"
-                 , "    ]"
-                 , "  ]"
-                 , ""
-                 , "parse" ++ name ++ "' :: Parser (" ++ name ++ " String)"
-                 , "parse" ++ name ++ "' = (parens " ++ lexName ++ " parse" ++ name ++") <|> parseForAll <|> parseExists <|> parseAtom"
-                 , "  where"
-                 , "    parseAtom = do"
-                 , "      x <- parse" ++ name ++ "Atomic"
-                 , "      return $ " ++ name ++ "Atom x"
-                 , ""
-                 , "    parseForAll = do"
-                 , "      reserved " ++ lexName ++ " \"ForAll\""
-                 , "      x <- identifier " ++ lexName
-                 , "      e <- parens " ++ lexName ++ " parse" ++ name
-                 , "      return $ " ++ name ++ "ForAll x e"
-                 , "    parseExists = do"
-                 , "      reserved " ++ lexName ++ " \"Exists\""
-                 , "      x <- identifier " ++ lexName
-                 , "      e <- parens " ++ lexName ++ " parse" ++ name
-                 , "      return $ " ++ name ++ "Exists x e"
+    mkLine [n] = [ printf "      x%d <- parse%sTerm" n name
+                 ,        "      char \')\'"
+                 , printf "      whiteSpace lexer%s" name
                  ]
+    mkLine (i:is) =  [ printf "      x%d <- parse%sTerm" i name
+                     ,        "      char \',\'"
+                     , printf "      whiteSpace lexer%s" name
+                     ] ++ (mkLine is)
+
+    vars :: Int -> String
+    vars n = concat $ fmap (printf " x%d") [1..n]
+
+    mkDefn (symbol, arity) = 
+      [ printf "    parse%s%s = do" name symbol
+      , printf "      reserved lexer%s \"%s\"" name symbol
+      ,        "      char \'(\'"
+      , printf "      whiteSpace lexer%s" name
+      ] ++ (mkLine [1..arity]) ++ 
+      [ printf "      return $ %s%s%s" name symbol (vars arity)
+      , ""
+      ]
+
+    mkConsts symbol = 
+      [ printf "    parse%s%s = do" name symbol
+      , printf "      reserved lexer%s \"%s\"" name symbol
+      , printf "      return %s%s" name symbol
+      , ""
+      ]
+    
+    terms = unlines $
+      [ printf "parse%sTerm :: Parser (%sTerm String)" name name
+      , printf "parse%sTerm = parse%sVar" name name
+      ] ++
+      (fmap (printf "    <|> parse%s%s" name) (cs ++ fmap fst fs)) ++
+      [ "  where"
+      , "    parse" ++ name ++ "Var = do"
+      , "      v <- identifier lexer" ++ name
+      , "      return $ " ++ name ++ "Var v"
+      , ""
+      ] ++
+      (concat $ fmap mkConsts cs) ++ 
+      (concat $ fmap mkDefn fs)
+
+    atomics = unlines $
+      [ printf "parse%sAtomic :: Parser (%sAtomic String)" name name
+      , printf "parse%sAtomic =" name
+      , printf "    parse%sEq" name
+      ] ++ 
+      (fmap (\(r,_) -> printf "    <|> parse%s%s" name r) rs) ++
+      [ "  where" ] ++
+      (concat $ fmap mkDefn $ ("Eq", 2):rs)
+
+    formulas = unlines $
+      [ printf "parse%s :: Parser (%s String)" name name
+      , printf "parse%s = (flip buildExpressionParser) parse%s' $ [" name name
+      , printf "    [ Prefix (reserved lexer%s \"Not\" >> return %sNot) ]" name name
+      , printf "  , [ Infix (reservedOp lexer%s \"&&\" >> return %sAnd) AssocLeft ]" name name
+      , printf "  , [ Infix (reservedOp lexer%s \"||\" >> return %sOr) AssocLeft ]" name name
+      , printf "  , [ Infix (reservedOp lexer%s \"->\" >> return %sImplies) AssocRight" name name
+      , printf "    , Infix (reservedOp lexer%s \"<->\" >> return %sIff) AssocLeft" name name
+      ,        "    ]"
+      ,        "  ]"
+      , ""
+      , printf "parse%s' :: Parser (%s String)" name name
+      , printf "parse%s' = (parens lexer%s parse%s) <|> parseForAll <|> parseExists <|> parseAtom" name name name
+      ,        "  where"
+      ,        "    parseAtom = do"
+      , printf "      x <- parse%sAtomic" name
+      , printf "      return $ %sAtom x" name
+      , ""
+      ,        "    parseForAll = do"
+      , printf "      reserved lexer%s \"ForAll\"" name
+      , printf "      x <- identifier lexer%s" name
+      , printf "      e <- parens lexer%s parse%s" name name
+      , printf "      return $ %sForAll x e" name
+      ,        "    parseExists = do"
+      , printf "      reserved lexer%s \"Exists\"" name
+      , printf "      x <- identifier lexer%s" name
+      , printf "      e <- parens lexer%s parse%s" name name
+      , printf "      return $ %sExists x e" name
+      ]
 
 -- }}}
 
