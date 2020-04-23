@@ -45,33 +45,33 @@ main = putStrLn "It Compiles!"
 word :: Parser String
 word = many1 letter
 
-nameParser :: Parser String
+nameParser :: Parser Theory
 nameParser = do
   name <- word
   char ':'
   spaces
   eof
-  return name
+  return $ mempty {_name = name}
 
-extendParser :: Parser String
+extendParser :: Parser Theory
 extendParser = do
   string "extending"
   spaces
   st <- word
   spaces
   eof
-  return st
+  return $ mempty {_extending = [st]}
 
-constNewParser :: Parser String
+constNewParser :: Parser Theory
 constNewParser = do
   string "constNew"
   spaces
   c <- word
   spaces
   eof
-  return c
+  return $ mempty {_constants = [c]}
 
-funNewParser :: Parser (String, Int)
+funNewParser :: Parser Theory
 funNewParser = do
   string "funNew"
   spaces
@@ -86,9 +86,9 @@ funNewParser = do
   char ')'
   spaces
   eof
-  return (f, read n)
+  return $ mempty {_functions = [(f,read n)]}
 
-relNewParser :: Parser (String, Int)
+relNewParser :: Parser Theory
 relNewParser = do
   string "relNew"
   spaces
@@ -103,9 +103,9 @@ relNewParser = do
   char ')'
   spaces
   eof
-  return (r, read n)
+  return $ mempty {_relations = [(r,read n)]}
 
-constDefParser :: Parser (String, String)
+constDefParser :: Parser Theory
 constDefParser = do
   string "constDef"
   spaces
@@ -113,9 +113,9 @@ constDefParser = do
   spaces
   d <- many1 anyChar
   eof
-  return (c, d)
+  return $ mempty {_constants = [c], _constDefns = [(c,d)]}
 
-funDefParser :: Parser (String, Int, String)
+funDefParser :: Parser Theory
 funDefParser = do
   string "funDef"
   spaces
@@ -131,9 +131,9 @@ funDefParser = do
   spaces
   d <- many1 anyChar
   eof
-  return (f, read n, d)
+  return $ mempty {_functions = [(f,read n)], _funDefns = [(f,d)]}
 
-relDefParser :: Parser (String, Int, String)
+relDefParser :: Parser Theory
 relDefParser = do
   string "relDef"
   spaces
@@ -149,10 +149,10 @@ relDefParser = do
   spaces
   d <- many1 anyChar
   eof
-  return (r, read n, d)
+  return $ mempty {_relations = [(r,read n)], _relDefns = [(r,d)]}
 
-langParser :: Parser Theory
-langParser = undefined
+lineParser :: Parser Theory
+lineParser = undefined
   
 
 -- }}}
