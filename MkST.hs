@@ -1,10 +1,30 @@
 -- A module to make ASTs for Main.hs
 module MkST where
 import System.IO
+import System.Environment
+import Data.List
 import Control.Monad.Reader
 import Text.Printf
 import Text.Parsec
 import Text.Parsec.String
+
+
+main :: IO ()
+main = do
+    args <- getArgs
+    case args of
+      []    -> putStrLn $ "Write a help message?" -- print syntax, etc?
+      (x:_) -> do
+        s <- readFile x
+        -- Turn the file into a [[String]], a list of definition blocks
+        let ss = filter (\l -> length l > 1) $ groupBy (\x y -> x /= "" && y /= "") $ lines s
+        (t:ts) <- sequence $ fmap parseBlock ss
+        writeFile "Converter.hs" ((boilerplate (_name t)) ++ (mkST t))
+  where
+    mkST :: Theory -> String
+    mkST t = unlines [mkDataTypes t, mkPrettyPrinter t, mkLexer t, mkParsers t]
+
+-- {{{ Parse the input file
 
 data Theory = Theory { _name       :: String
                      , _extending  :: [String]
@@ -14,7 +34,7 @@ data Theory = Theory { _name       :: String
                      , _constDefns :: [(String, String)]
                      , _funDefns   :: [(String, String)]
                      , _relDefns   :: [(String, String)]
-                     }
+                     } deriving Show
 
 instance Semigroup Theory where
   t <> s = Theory
@@ -30,17 +50,6 @@ instance Semigroup Theory where
 instance Monoid Theory where
   mempty = Theory "" [] [] [] [] [] [] []
 
-
--- Print syntax if called without arguments
-
-main :: IO ()
-main = putStrLn "It Compiles!"
-
-  -- let syntaxTree = unlines [mkDataTypes name cs rs fs, mkPrettyPrinter name cs rs fs]
-  -- let parser = unlines [mkLexer name cs rs fs, mkParsers name cs rs fs]
-  -- writeFile fname ((boilerplate name) ++ syntaxTree ++ parser)
-
--- {{{ Parse the input file
 
 word :: Parser String
 word = many1 letter
@@ -152,15 +161,28 @@ relDefParser = do
   return $ mempty {_relations = [(r,read n)], _relDefns = [(r,d)]}
 
 lineParser :: Parser Theory
-lineParser = undefined
-  
+lineParser =  try nameParser
+          <|> try extendParser
+          <|> try constNewParser
+          <|> try funNewParser
+          <|> try relNewParser
+          <|> try constDefParser
+          <|> try funDefParser
+          <|> try relDefParser
+
+parseBlock :: [String] -> IO Theory
+parseBlock s = fmap mconcat $ sequence $ fmap parseLine s
+  where
+    parseLine l = case (parse lineParser "" l) of
+      Left  e -> putStrLn ("error: " ++ (show e)) >> return mempty
+      Right v -> return v
 
 -- }}}
 
 -- {{{ Top Level Stuff
 
 boilerplate name = 
-  unlines $ [ "module " ++ name ++ " where"
+  unlines $ [ "module Converter where"
             , "import Text.Parsec"
             , "import Text.Parsec.String"
             , "import Text.Parsec.Token"
@@ -250,6 +272,7 @@ mkPrettyPrinter t = unlines $ [terms, atomics, formulas, showDefns]
       [ printf "draw%sTerm :: (Show a) => %sTerm a -> [String]" name name
       , printf "draw%sTerm = go" name
       , "  where"
+      , printf "    draw :: (Show a) => [%sTerm a] -> [String]" name
       , printf "    draw = drawGenericSubTree draw%sTerm" name
       , printf "    go (%sVar x) = [show x]" name
       ] ++
@@ -260,6 +283,7 @@ mkPrettyPrinter t = unlines $ [terms, atomics, formulas, showDefns]
       [ printf "draw%sAtomic :: (Show a) => %sAtomic a -> [String]" name name
       , printf "draw%sAtomic = go" name
       , "  where"
+      , printf "    draw :: (Show a) => [%sTerm a] -> [String]" name
       , printf "    draw = drawGenericSubTree draw%sTerm" name
       ] ++
       (fmap mkLine $ ("Eq", 2) : rs)
@@ -268,6 +292,7 @@ mkPrettyPrinter t = unlines $ [terms, atomics, formulas, showDefns]
       [ printf "draw%s :: (Show a) => %s a -> [String]" name name
       , printf "draw%s = go" name
       , "  where"
+      , printf "    draw :: (Show a) => [%s a] -> [String]" name
       , printf "    draw = drawGenericSubTree draw%s" name
       , printf "    go (%sAtom x1) = draw%sAtomic x1" name name
       , mkLine ("And", 2)
