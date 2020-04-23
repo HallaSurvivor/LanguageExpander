@@ -1,13 +1,8 @@
-{ name: BST
-, extends: {}
-, relations: {(Membership, 2, 1 in 2)}
-, functions: {}
-}
+BST:
+relNew (In, 2)
 
-{ name: EST
-, extends: BST
-, relations: {}
-, functions: {(EmptySet, 0, EmptySet, (ForAll x)(not (x in 1)))}
-}
-
-(Name, arity, syntax, definition)
+BSTA: 
+extending BST
+constDef Empty ForAll z (Not In(z,o))
+funDef (PowerSet,1) ForAll z (In(z,o) <-> ForAll w (In(w,z) -> In(w,v1)))
+relDef (Subset,2) ForAll z (In(z,v1) -> In(z,v2))

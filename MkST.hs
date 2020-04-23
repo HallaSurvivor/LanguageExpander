@@ -3,47 +3,159 @@ module MkST where
 import System.IO
 import Control.Monad.Reader
 import Text.Printf
+import Text.Parsec
+import Text.Parsec.String
 
-data Theory = Theory { name :: String
-                     , constants :: [String]
-                     , functions :: [(String, Int)]
-                     , relations :: [(String, Int)]
+data Theory = Theory { _name       :: String
+                     , _extending  :: [String]
+                     , _constants  :: [String]
+                     , _functions  :: [(String, Int)]
+                     , _relations  :: [(String, Int)]
+                     , _constDefns :: [(String, String)]
+                     , _funDefns   :: [(String, String)]
+                     , _relDefns   :: [(String, String)]
                      }
 
-type Generator a = Reader Theory a
+instance Semigroup Theory where
+  t <> s = Theory
+    (_name t       <> _name s)
+    (_extending t  <> _extending s)
+    (_constants t  <> _constants s)
+    (_functions t  <> _functions s)
+    (_relations t  <> _relations s)
+    (_constDefns t <> _constDefns s)
+    (_funDefns t   <> _funDefns s)
+    (_relDefns t   <> _relDefns s)
+
+instance Monoid Theory where
+  mempty = Theory "" [] [] [] [] [] [] []
+
+
+-- Print syntax if called without arguments
 
 main :: IO ()
-main = do
-  putStrLn "Language abbreviation?"
-  name <- getLine
+main = putStrLn "It Compiles!"
 
-  putStrLn "Constants? (space separated list)"
-  csn <- getLine
+  -- let syntaxTree = unlines [mkDataTypes name cs rs fs, mkPrettyPrinter name cs rs fs]
+  -- let parser = unlines [mkLexer name cs rs fs, mkParsers name cs rs fs]
+  -- writeFile fname ((boilerplate name) ++ syntaxTree ++ parser)
 
-  putStrLn "Relations? (space separated list of names)"
-  rsn <- getLine
+-- {{{ Parse the input file
 
-  putStrLn "and their arities? (space separated list of nats)"
-  rsa <- getLine
+word :: Parser String
+word = many1 letter
 
-  putStrLn "Functions? (space separated list of names)"
-  fsn <- getLine
+nameParser :: Parser String
+nameParser = do
+  name <- word
+  char ':'
+  spaces
+  eof
+  return name
 
-  putStrLn "and their arities? (space separated list of nats)"
-  fsa <- getLine
+extendParser :: Parser String
+extendParser = do
+  string "extending"
+  spaces
+  st <- word
+  spaces
+  eof
+  return st
 
-  putStrLn "Where should I save these?"
-  fname <- getLine
+constNewParser :: Parser String
+constNewParser = do
+  string "constNew"
+  spaces
+  c <- word
+  spaces
+  eof
+  return c
 
-  let cs = words csn
-      rs = zip (words rsn) (fmap read (words rsa))
-      fs = zip (words fsn) (fmap read (words fsa))
+funNewParser :: Parser (String, Int)
+funNewParser = do
+  string "funNew"
+  spaces
+  char '('
+  spaces
+  f <- word
+  spaces
+  char ','
+  spaces
+  n <- many1 digit
+  spaces
+  char ')'
+  spaces
+  eof
+  return (f, read n)
 
-  let syntaxTree = unlines [mkDataTypes name cs rs fs, mkPrettyPrinter name cs rs fs]
+relNewParser :: Parser (String, Int)
+relNewParser = do
+  string "relNew"
+  spaces
+  char '('
+  spaces
+  r <- word
+  spaces
+  char ','
+  spaces
+  n <- many1 digit
+  spaces
+  char ')'
+  spaces
+  eof
+  return (r, read n)
 
-  let parser = unlines [mkLexer name cs rs fs, mkParsers name cs rs fs]
+constDefParser :: Parser (String, String)
+constDefParser = do
+  string "constDef"
+  spaces
+  c <- word
+  spaces
+  d <- many1 anyChar
+  eof
+  return (c, d)
 
-  writeFile fname ((boilerplate name) ++ syntaxTree ++ parser)
+funDefParser :: Parser (String, Int, String)
+funDefParser = do
+  string "funDef"
+  spaces
+  char '('
+  spaces
+  f <- word
+  spaces
+  char ','
+  spaces
+  n <- many1 digit
+  spaces
+  char ')'
+  spaces
+  d <- many1 anyChar
+  eof
+  return (f, read n, d)
+
+relDefParser :: Parser (String, Int, String)
+relDefParser = do
+  string "relDef"
+  spaces
+  char '('
+  spaces
+  r <- word
+  spaces
+  char ','
+  spaces
+  n <- many1 digit
+  spaces
+  char ')'
+  spaces
+  d <- many1 anyChar
+  eof
+  return (r, read n, d)
+
+langParser :: Parser Theory
+langParser = undefined
+  
+
+-- }}}
 
 -- {{{ Top Level Stuff
 
@@ -90,9 +202,11 @@ boilerplate name =
 
 -- {{{ Make the datatype
 
-mkDataTypes :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-mkDataTypes name cs rs fs = unlines $ [terms, atomics, formulas]
+mkDataTypes :: Theory -> String
+mkDataTypes t = unlines $ [terms, atomics, formulas]
   where
+    (name, cs, fs, rs) = (_name t, _constants t, _functions t, _relations t)
+
     mkLine label (symbol, arity) = "  | " ++ name ++ symbol ++ mkArgs
       where
         mkArgs = concat $ take arity $ repeat $ printf " (%s%s a)" name label
@@ -121,9 +235,11 @@ mkDataTypes name cs rs fs = unlines $ [terms, atomics, formulas]
       , mkLine "" ("Exists a", 1)
       ]
   
-mkPrettyPrinter :: String -> [String] -> [(String, Int)] -> [(String, Int)] -> String
-mkPrettyPrinter name cs rs fs = unlines $ [terms, atomics, formulas, showDefns]
+mkPrettyPrinter :: Theory -> String
+mkPrettyPrinter t = unlines $ [terms, atomics, formulas, showDefns]
   where
+    (name, cs, fs, rs) = (_name t, _constants t, _functions t, _relations t)
+
     mkLine (symbol, arity) = 
         printf "    go (%s%s%s) = [\"%s\"] ++ draw [%s]" name symbol args symbol treeArgs
       where
@@ -178,34 +294,38 @@ mkPrettyPrinter name cs rs fs = unlines $ [terms, atomics, formulas, showDefns]
 
 -- {{{ Make the parser
 
-mkLexer :: String -> [String] -> [(String,Int)] -> [(String,Int)] -> String
-mkLexer name cs rs fs = unlines $ 
-  [ "lexer" ++ name ++ " :: TokenParser ()"
-  , "lexer" ++ name ++ " = makeTokenParser languageDef"
-  , "  where"
-  , "    languageDef ="
-  , "      emptyDef { commentStart = \"/*\""
-  , "               , commentEnd = \"*/\""
-  , "               , commentLine = \"//\""
-  , "               , identStart = letter"
-  , "               , identLetter = alphaNum"
-  , "               , reservedNames = [ \"Eq\""
-  , "                                 , \"Not\""
-  , "                                 , \"ForAll\""
-  , "                                 , \"Exists\""
-  ] ++ 
-  (
-    fmap (printf "                                 , \"%s\"") $ 
-      cs ++ map fst rs ++ map fst fs
-  ) ++
-  [ "                                 ]"
-  , "               , reservedOpNames = [ \"&&\", \"||\", \"->\", \"<->\" ]"
-  , "               }"
-  ]
-
-mkParsers :: String -> [String] -> [(String,Int)] -> [(String, Int)] -> String
-mkParsers name cs rs fs = unlines $ [terms, atomics, formulas]
+mkLexer :: Theory -> String
+mkLexer t = unlines $ 
+    [ "lexer" ++ name ++ " :: TokenParser ()"
+    , "lexer" ++ name ++ " = makeTokenParser languageDef"
+    , "  where"
+    , "    languageDef ="
+    , "      emptyDef { commentStart = \"/*\""
+    , "               , commentEnd = \"*/\""
+    , "               , commentLine = \"//\""
+    , "               , identStart = letter"
+    , "               , identLetter = alphaNum"
+    , "               , reservedNames = [ \"Eq\""
+    , "                                 , \"Not\""
+    , "                                 , \"ForAll\""
+    , "                                 , \"Exists\""
+    ] ++ 
+    (
+      fmap (printf "                                 , \"%s\"") $ 
+        cs ++ map fst rs ++ map fst fs
+    ) ++
+    [ "                                 ]"
+    , "               , reservedOpNames = [ \"&&\", \"||\", \"->\", \"<->\" ]"
+    , "               }"
+    ]
   where
+    (name, cs, fs, rs) = (_name t, _constants t, _functions t, _relations t)
+
+mkParsers :: Theory -> String
+mkParsers t = unlines $ [terms, atomics, formulas]
+  where
+    (name, cs, fs, rs) = (_name t, _constants t, _functions t, _relations t)
+
     mkLine [n] = [ printf "      x%d <- parse%sTerm" n name
                  ,        "      char \')\'"
                  , printf "      whiteSpace lexer%s" name
