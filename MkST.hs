@@ -3,9 +3,12 @@ module MkST where
 import System.IO
 import System.Environment
 import Data.List
+import Data.Maybe (catMaybes)
+import qualified Data.Map.Strict as M
+import Control.Monad.State
 import Control.Monad.Reader
 import Text.Printf
-import Text.Parsec
+import Text.Parsec hiding (State)
 import Text.Parsec.String
 
 
@@ -19,21 +22,41 @@ main = do
         -- Turn the file into a [[String]], a list of definition blocks
         let ss = filter (\l -> length l > 1) $ groupBy (\x y -> x /= "" && y /= "") $ lines s
         ts <- sequence $ fmap parseBlock ss
-        writeFile "Converter.hs" (boilerplate ts ++ concatMap mkST ts)
+        let theoryMap = M.fromList [(_name t, t) | t <- ts]
+        let ts' = evalState (mapM addDerivations ts) theoryMap
+        mapM_ print ts'
+        writeFile "Converter.hs" (boilerplate ts' ++ concatMap mkST ts')
   where
     mkST :: Theory -> String
     mkST t = unlines [mkDataTypes t, mkPrettyPrinter t, mkLexer t, mkParsers t]
 
+addDerivations :: Theory -> State (M.Map String Theory) Theory
+addDerivations t = do
+    tm <- get
+    let es   = fmap (tm M.!?) (_extending t)
+    let es'  = catMaybes es -- one day maybe we'll thread errors around
+    let tNew = t <> foldMap derived es'
+    put $ M.insert (_name t) tNew tm
+    return tNew
+  where
+    derived t = mempty { _derivedConstants = _constants t ++ _derivedConstants t 
+                       , _derivedFunctions = _functions t ++ _derivedFunctions t
+                       , _derivedRelations = _relations t ++ _derivedRelations t
+                       }
+
 -- {{{ Parse the input file
 
-data Theory = Theory { _name       :: String
-                     , _extending  :: [String]
-                     , _constants  :: [String]
-                     , _functions  :: [(String, Int)]
-                     , _relations  :: [(String, Int)]
-                     , _constDefns :: [(String, String)]
-                     , _funDefns   :: [(String, String)]
-                     , _relDefns   :: [(String, String)]
+data Theory = Theory { _name             :: String
+                     , _extending        :: [String]
+                     , _constants        :: [String]
+                     , _functions        :: [(String, Int)]
+                     , _relations        :: [(String, Int)]
+                     , _constDefns       :: [(String, String)]
+                     , _funDefns         :: [(String, String)]
+                     , _relDefns         :: [(String, String)]
+                     , _derivedConstants :: [String]
+                     , _derivedFunctions :: [(String,Int)]
+                     , _derivedRelations :: [(String,Int)]
                      } deriving Show
 
 instance Semigroup Theory where
@@ -46,9 +69,12 @@ instance Semigroup Theory where
     (_constDefns t <> _constDefns s)
     (_funDefns t   <> _funDefns s)
     (_relDefns t   <> _relDefns s)
+    (_derivedConstants t <> _derivedConstants s)
+    (_derivedFunctions t <> _derivedFunctions s)
+    (_derivedRelations t <> _derivedRelations s)
 
 instance Monoid Theory where
-  mempty = Theory "" [] [] [] [] [] [] []
+  mempty = Theory "" [] [] [] [] [] [] [] [] [] []
 
 
 word :: Parser String
