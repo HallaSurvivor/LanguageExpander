@@ -24,7 +24,6 @@ main = do
         ts <- sequence $ fmap parseBlock ss
         let theoryMap = M.fromList [(_name t, t) | t <- ts]
         let ts' = evalState (mapM addDerivations ts) theoryMap
-        mapM_ print ts'
         writeFile "Converter.hs" (boilerplate ts' ++ concatMap mkST ts')
   where
     mkST :: Theory -> String
