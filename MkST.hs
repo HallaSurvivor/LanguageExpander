@@ -255,7 +255,11 @@ boilerplate ts =
 mkDataTypes :: Theory -> String
 mkDataTypes t = unlines $ [terms, atomics, formulas]
   where
-    (name, cs, fs, rs) = (_name t, _constants t, _functions t, _relations t)
+    (name, cs, fs, rs) = ( _name t
+                         , _derivedConstants t ++ _constants t
+                         , _derivedFunctions t ++ _functions t
+                         , _derivedRelations t ++ _relations t
+                         )
 
     mkLine label (symbol, arity) = "  | " ++ name ++ symbol ++ mkArgs
       where
@@ -288,7 +292,11 @@ mkDataTypes t = unlines $ [terms, atomics, formulas]
 mkPrettyPrinter :: Theory -> String
 mkPrettyPrinter t = unlines $ [terms, atomics, formulas, showDefns]
   where
-    (name, cs, fs, rs) = (_name t, _constants t, _functions t, _relations t)
+    (name, cs, fs, rs) = ( _name t
+                         , _derivedConstants t ++ _constants t
+                         , _derivedFunctions t ++ _functions t
+                         , _derivedRelations t ++ _relations t
+                         )
 
     mkLine (symbol, arity) = 
         printf "    go (%s%s%s) = [\"%s\"] ++ draw [%s]" name symbol args symbol treeArgs
@@ -372,12 +380,20 @@ mkLexer t = unlines $
     , "               }"
     ]
   where
-    (name, cs, fs, rs) = (_name t, _constants t, _functions t, _relations t)
+    (name, cs, fs, rs) = ( _name t
+                         , _derivedConstants t ++ _constants t
+                         , _derivedFunctions t ++ _functions t
+                         , _derivedRelations t ++ _relations t
+                         )
 
 mkParsers :: Theory -> String
 mkParsers t = unlines $ [terms, atomics, formulas, exposed]
   where
-    (name, cs, fs, rs) = (_name t, _constants t, _functions t, _relations t)
+    (name, cs, fs, rs) = ( _name t
+                         , _derivedConstants t ++ _constants t
+                         , _derivedFunctions t ++ _functions t
+                         , _derivedRelations t ++ _relations t
+                         )
 
     mkLine [n] = [ printf "      x%d <- parse%sTerm" n name
                  ,        "      char \')\'"

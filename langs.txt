@@ -6,3 +6,10 @@ extending BST
 constDef Empty ForAll z (Not In(z,o))
 funDef (PowerSet,1) ForAll z (In(z,o) <-> ForAll w (In(w,z) -> In(w,v1)))
 relDef (Subset,2) ForAll z (In(z,v1) -> In(z,v2))
+funDef (Union,1) ForAll z (In(z,o) <-> Exists w (In(z,w) && In(w,v1)))
+funDef (Singleton, 1) ForAll z (In(z,o) <-> Eq(z,v1))
+funDef (Pairing, 2) ForAll z (In(z,o) <-> Eq(z,v1) || Eq(z,v2))
+
+BSTB:
+extending BSTA
+funDef (BinUnion, 2) Eq(o,Union(Pairing(v1,v2)))
