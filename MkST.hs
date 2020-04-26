@@ -18,8 +18,8 @@ main = do
         s <- readFile x
         -- Turn the file into a [[String]], a list of definition blocks
         let ss = filter (\l -> length l > 1) $ groupBy (\x y -> x /= "" && y /= "") $ lines s
-        (t:ts) <- sequence $ fmap parseBlock ss
-        writeFile "Converter.hs" ((boilerplate (_name t)) ++ (mkST t))
+        ts <- sequence $ fmap parseBlock ss
+        writeFile "Converter.hs" (boilerplate ts ++ concatMap mkST ts)
   where
     mkST :: Theory -> String
     mkST t = unlines [mkDataTypes t, mkPrettyPrinter t, mkLexer t, mkParsers t]
@@ -181,43 +181,45 @@ parseBlock s = fmap mconcat $ sequence $ fmap parseLine s
 
 -- {{{ Top Level Stuff
 
-boilerplate name = 
-  unlines $ [ "module Converter where"
-            , "import Text.Parsec"
-            , "import Text.Parsec.String"
-            , "import Text.Parsec.Token"
-            , "import Text.Parsec.Language"
-            , "import Text.Parsec.Expr"
-            , ""
-            , "drawGenericSubTree :: (a -> [String]) -> [a] -> [String]"
-            , "drawGenericSubTree drawTree = go"
-            , "  where"
-            , "    go [] = []"
-            , "    go [t] = \"|\" : shift \"`- \" \"   \" (drawTree t)"
-            , "    go (t:ts) = \"|\" : shift \"+ \" \"|  \" (drawTree t) ++ go ts"
-            , ""
-            , "    shift first other = zipWith (++) (first : repeat other)"
-            , ""
-            , ""
-            , "parseInput :: Parser (" ++ name ++ " String)"
-            , "parseInput = do"
-            , "  whiteSpace lexer" ++ name
-            , "  e <- parse" ++ name
-            , "  eof"
-            , "  return e"
-            , ""
-            , "convert :: String -> String"
-            , "convert s ="
-            , "  case ret of"
-            , "    Left e -> \"error: \" ++ (show e)"
-            , "    Right v -> \"answer: \\n\" ++ (show v)"
-            , "  where"
-            , "    ret = parse parseInput \"\" s"
-            , ""
-            , "main :: IO ()"
-            , "main = interact (unlines . (map convert) . lines)"
-            , ""
-            ]
+boilerplate :: [Theory] -> String
+boilerplate ts = 
+    unlines $ [ "module Converter where"
+              , "import Text.Parsec"
+              , "import Text.Parsec.String"
+              , "import Text.Parsec.Token"
+              , "import Text.Parsec.Language"
+              , "import Text.Parsec.Expr"
+              , ""
+              , "drawGenericSubTree :: (a -> [String]) -> [a] -> [String]"
+              , "drawGenericSubTree drawTree = go"
+              , "  where"
+              , "    go [] = []"
+              , "    go [t] = \"|\" : shift \"`- \" \"   \" (drawTree t)"
+              , "    go (t:ts) = \"|\" : shift \"+ \" \"|  \" (drawTree t) ++ go ts"
+              , ""
+              , "    shift first other = zipWith (++) (first : repeat other)"
+              , ""
+              ] ++ parseInput ++
+              [ ""
+              , "convert :: String -> String"
+              , "convert s ="
+              , "  case ret of"
+              , "    Left e -> \"error: \" ++ (show e)"
+              , "    Right v -> v"
+              , "  where"
+              , "    ret = parse parseInput \"\" s"
+              , ""
+              , "main :: IO ()"
+              , "main = interact (unlines . (map convert) . lines)"
+              , ""
+              ]
+  where
+    mkInput (0,t) = printf "      try parse%sToString" (_name t)
+    mkInput (_,t) = printf "  <|> try parse%sToString" (_name t)
+
+    parseInput = [ "parseInput :: Parser String"
+                 , "parseInput = do"
+                 ] ++ (fmap mkInput $ zip [0..] ts)
 
 
 -- }}}
@@ -347,7 +349,7 @@ mkLexer t = unlines $
     (name, cs, fs, rs) = (_name t, _constants t, _functions t, _relations t)
 
 mkParsers :: Theory -> String
-mkParsers t = unlines $ [terms, atomics, formulas]
+mkParsers t = unlines $ [terms, atomics, formulas, exposed]
   where
     (name, cs, fs, rs) = (_name t, _constants t, _functions t, _relations t)
 
@@ -431,6 +433,16 @@ mkParsers t = unlines $ [terms, atomics, formulas]
       , printf "      x <- identifier lexer%s" name
       , printf "      e <- parens lexer%s parse%s" name name
       , printf "      return $ %sExists x e" name
+      ]
+
+    exposed = unlines $
+      [ printf "parse%sToString :: Parser String" name
+      , printf "parse%sToString = do" name
+      , printf "  string \"%s\"" name
+      ,        "  spaces"
+      , printf "  tree <- parse%s" name
+      , printf "  eof"
+      ,        "  return $ show tree"
       ]
 
 -- }}}
