@@ -27,7 +27,16 @@ main = do
         writeFile "Converter.hs" (boilerplate ts' ++ concatMap mkST ts')
   where
     mkST :: Theory -> String
-    mkST t = unlines [mkDataTypes t, mkPrettyPrinter t, mkLexer t, mkParsers t]
+    mkST t = unlines $ 
+      [ printf "-- {{{ %s" (_name t)
+      , mkDataTypes t
+      , mkPrettyPrinter t
+      , mkLexer t
+      , mkParsers t
+      , mkConverters t
+      , "--}}}"
+      , ""
+      ]
 
 addDerivations :: Theory -> State (M.Map String Theory) Theory
 addDerivations t = do
@@ -208,7 +217,9 @@ parseBlock s = fmap mconcat $ sequence $ fmap parseLine s
 
 boilerplate :: [Theory] -> String
 boilerplate ts = 
-    unlines $ [ "module Converter where"
+    unlines $ [ "{-# LANGUAGE FlexibleInstances #-}"
+              , "{-# LANGUAGE UndecidableInstances #-}"
+              , "module Converter where"
               , "import Text.Parsec"
               , "import Text.Parsec.String"
               , "import Text.Parsec.Token"
@@ -488,3 +499,32 @@ mkParsers t = unlines $ [terms, atomics, formulas, exposed]
 
 -- }}}
 
+-- {{{ Make the converters
+
+mkConverters :: Theory -> String
+mkConverters t = unlines $ [ classDefn, inheritance, instances ]
+  where
+    name = _name t
+    extending = _extending t
+
+    classDefn = unlines $
+      [ printf "class ConvertibleTo%s a where" name
+      , printf "  convertTo%s :: a -> %s String" name name
+      , ""
+      ]
+
+    inheritance = unlines $ fmap mkInheritance extending
+
+    mkInheritance e = unlines $
+      [ printf "instance (ConvertibleTo%s a) => ConvertibleTo%s a where" name e
+      , printf "  convertTo%s = convertTo%s . convertTo%s" e e name
+      ]
+
+    instances = unlines $ fmap mkInstance extending
+
+    mkInstance e = unlines $
+      [ printf "instance ConvertibleTo%s (%s String) where" e name
+      , printf "  convertTo%s = undefined" e
+      ]
+
+-- }}}
