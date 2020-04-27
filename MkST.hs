@@ -508,22 +508,22 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
     extending = _extending t
 
     classDefn = unlines $
-      [ printf "class ConvertibleTo%s a where" name
-      , printf "  convertTo%s :: a -> %s String" name name
+      [ printf "class ConvertibleTo%s t where" name
+      , printf "  convertTo%s :: t a -> %s a" name name
       , ""
       ]
 
     inheritance = unlines $ fmap mkInheritance extending
 
     mkInheritance e = unlines $
-      [ printf "instance (ConvertibleTo%s a) => ConvertibleTo%s a where" name e
+      [ printf "instance {-# OVERLAPPABLE #-} (ConvertibleTo%s t) => ConvertibleTo%s t where" name e
       , printf "  convertTo%s = convertTo%s . convertTo%s" e e name
       ]
 
     instances = unlines $ fmap mkInstance extending
 
     mkInstance e = unlines $
-      [ printf "instance ConvertibleTo%s (%s String) where" e name
+      [ printf "instance ConvertibleTo%s %s where" e name
       , printf "  convertTo%s = undefined" e
       ]
 
