@@ -507,9 +507,11 @@ data Term a = Var a
             | Fun a [Term a] 
             | Output 
             | Input Int
+            deriving Show
 
 data Atomic a = Eq (Term a) (Term a) 
               | Rel a [Term a]
+              deriving Show
 
 data Expr a = Atom (Atomic a) 
             | And (Expr a) (Expr a)
@@ -519,6 +521,7 @@ data Expr a = Atom (Atomic a)
             | Not (Expr a)
             | ForAll a (Expr a)
             | Exists a (Expr a)
+            deriving Show
 
 lexer :: TokenParser ()
 lexer = makeTokenParser languageDef
@@ -544,7 +547,7 @@ parseTerm = try parseOut <|> try parseIn <|> try parseFun <|> try parseVar
       return Output
 
     parseIn = do
-      reserved lexer "v"
+      char 'v'
       n <- natural lexer
       return $ Input $ fromInteger n
 
@@ -618,6 +621,13 @@ parseExpr' = (parens lexer parseExpr) <|> parseForAll <|> parseExists <|> parseA
       e <- parens lexer parseExpr
       return $ Exists x e
     
+useParser :: String -> (Expr String)
+useParser s =
+  case ret of 
+    -- Left  e -> handle errors gracefully
+    Right v -> v
+  where
+    ret = parse parseExpr' "" s
 
 mkConverters :: Theory -> String
 mkConverters t = unlines $ [ classDefn, inheritance, instances ]
@@ -660,29 +670,69 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
         ] ++ termDefns
       where
         atomicDefns = concat [ fmap mkDerivedRel (_derivedRelations t)
-                              -- , fmap mkDefinedRel (_relDefns t) 
-                              ]
+                             , fmap mkDefinedRel (_relDefns t) 
+                             ]
 
         termDefns = concat [ fmap mkDerivedFun (_derivedFunctions t)
-                           -- , fmap mkDefinedFun (_funDefns t)
+                           , fmap mkDefinedFun (_funDefns t)
                            , fmap mkDerivedConst (_derivedConstants t)
-                           -- , fmap mkDefinedConst (_constDefns t)
+                           , fmap mkDefinedConst (_constDefns t)
                            ]
 
+        args n = concat $ take n $ zipWith (++) (repeat $ " x") (fmap show [1..])
+
         mkDerivedRel :: (String, Int) -> String
-        mkDerivedRel (r,n) = printf "      convertAtomic (%s%s%s) = %s%s%s" name r args e r convertedArgs
+        mkDerivedRel (r,n) = printf "      convertAtomic (%s%s%s) = %s%s%s" name r (args n) e r convertedArgs
           where
-            args = concat $ take n $ zipWith (++) (repeat $ " x") (fmap show [1..])
             convertedArgs = concat $ take n $ zipWith (\s n -> s ++ show n ++ ")") (repeat $ " (convertTerm x") [1..]
             
         mkDerivedFun :: (String, Int) -> String
-        mkDerivedFun (f,n) = printf "      convertTerm (%s%s%s) = %s%s%s" name f args e f convertedArgs
+        mkDerivedFun (f,n) = printf "      convertTerm (%s%s%s) = %s%s%s" name f (args n) e f convertedArgs
           where
-            args = concat $ take n $ zipWith (++) (repeat $ " x") (fmap show [1..])
             convertedArgs = concat $ take n $ zipWith (\s n -> s ++ show n ++ ")") (repeat $ " (convertTerm x") [1..]
 
         mkDerivedConst :: String -> String
         mkDerivedConst c = printf "      convertTerm %s%s = %s%s" name c e c
+
+        getIn :: (Eq a) => Expr a -> Int
+        getIn (And x y)     = max (getIn x) (getIn y)
+        getIn (Or x y)      = max (getIn x) (getIn y)
+        getIn (Implies x y) = max (getIn x) (getIn y)
+        getIn (Iff x y)     = max (getIn x) (getIn y)
+        getIn (Not x)       = getIn x
+        getIn (ForAll a x)  = getIn x
+        getIn (Exists a x)  = getIn x
+        getIn (Atom x)      = getIn' x
+          where
+            getIn' (Eq x y)   = max (getIn'' x) (getIn'' y)
+            getIn' (Rel a xs) = maximum $ fmap getIn'' xs
+
+            getIn'' (Input n)  = n
+            getIn'' (Fun f xs) = maximum $ fmap getIn'' xs
+            getIn'' _          = 0
+
+
+        mkDefinedRel :: (String, String) -> String
+        mkDefinedRel (r,d) = printf "      convertAtomic (%s%s%s) = %s" name r (args n) converted
+          where
+            t = useParser d
+            n = getIn t
+
+            converted = "undefined"
+
             
+        mkDefinedFun :: (String, String) -> String
+        mkDefinedFun (f,d) = printf "      convertTerm (%s%s%s) = %s" name f (args n) converted
+          where
+            t = useParser d
+            n = getIn t
+
+            converted = "undefined"
+
+        mkDefinedConst :: (String, String) -> String
+        mkDefinedConst (c,d) = printf "      convertTerm %s%s = %s" name c converted
+          where
+            t = useParser d
+            converted = "undefined"
 
 -- }}}
