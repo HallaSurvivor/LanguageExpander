@@ -641,8 +641,48 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
     instances = unlines $ fmap mkInstance extending
 
     mkInstance e = unlines $
-      [ printf "instance ConvertibleTo%s %s where" e name
-      , printf "  convertTo%s = undefined" e
-      ]
+        [ printf "instance ConvertibleTo%s %s where" e name
+        , printf "  convertTo%s = convertExpr" e
+        ,        "    where"
+        , printf "      convertExpr (%sAtom x)      = %sAtom     (convertAtomic x)" name e
+        , printf "      convertExpr (%sAnd x y)     = %sAnd      (convertExpr x) (convertExpr y)" name e
+        , printf "      convertExpr (%sOr x y)      = %sOr       (convertExpr x) (convertExpr y)" name e
+        , printf "      convertExpr (%sImplies x y) = %sImplies  (convertExpr x) (convertExpr y)" name e
+        , printf "      convertExpr (%sIff x y)     = %sIff      (convertExpr x) (convertExpr y)" name e
+        , printf "      convertExpr (%sNot x)       = %sNot      (convertExpr x)" name e
+        , printf "      convertExpr (%sForAll a x)  = %sForAll a (convertExpr x)" name e
+        , printf "      convertExpr (%sExists a x)  = %sExists a (convertExpr x)" name e
+        , ""
+        , printf "      convertAtomic (%sEq x y) = %sEq (convertTerm x) (convertTerm y)" name e
+        ] ++ atomicDefns ++
+        [ ""
+        , printf "      convertTerm (%sVar x) = %sVar x" name e
+        ] ++ termDefns
+      where
+        atomicDefns = concat [ fmap mkDerivedRel (_derivedRelations t)
+                              -- , fmap mkDefinedRel (_relDefns t) 
+                              ]
+
+        termDefns = concat [ fmap mkDerivedFun (_derivedFunctions t)
+                           -- , fmap mkDefinedFun (_funDefns t)
+                           , fmap mkDerivedConst (_derivedConstants t)
+                           -- , fmap mkDefinedConst (_constDefns t)
+                           ]
+
+        mkDerivedRel :: (String, Int) -> String
+        mkDerivedRel (r,n) = printf "      convertAtomic (%s%s%s) = %s%s%s" name r args e r convertedArgs
+          where
+            args = concat $ take n $ zipWith (++) (repeat $ " x") (fmap show [1..])
+            convertedArgs = concat $ take n $ zipWith (\s n -> s ++ show n ++ ")") (repeat $ " (convertTerm x") [1..]
+            
+        mkDerivedFun :: (String, Int) -> String
+        mkDerivedFun (f,n) = printf "      convertTerm (%s%s%s) = %s%s%s" name f args e f convertedArgs
+          where
+            args = concat $ take n $ zipWith (++) (repeat $ " x") (fmap show [1..])
+            convertedArgs = concat $ take n $ zipWith (\s n -> s ++ show n ++ ")") (repeat $ " (convertTerm x") [1..]
+
+        mkDerivedConst :: String -> String
+        mkDerivedConst c = printf "      convertTerm %s%s = %s%s" name c e c
+            
 
 -- }}}
