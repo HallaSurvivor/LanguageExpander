@@ -4,12 +4,15 @@ import System.IO
 import System.Environment
 import Data.List
 import Data.Maybe (catMaybes)
+import Data.Char (isUpper)
 import qualified Data.Map.Strict as M
 import Control.Monad.State
-import Control.Monad.Reader
 import Text.Printf
 import Text.Parsec hiding (State)
 import Text.Parsec.String
+import Text.Parsec.Token
+import Text.Parsec.Language
+import Text.Parsec.Expr
 
 
 main :: IO ()
@@ -371,10 +374,7 @@ mkLexer t = unlines $
     , "lexer" ++ name ++ " = makeTokenParser languageDef"
     , "  where"
     , "    languageDef ="
-    , "      emptyDef { commentStart = \"/*\""
-    , "               , commentEnd = \"*/\""
-    , "               , commentLine = \"//\""
-    , "               , identStart = letter"
+    , "      emptyDef { identStart = letter"
     , "               , identLetter = alphaNum"
     , "               , reservedNames = [ \"Eq\""
     , "                                 , \"Not\""
@@ -480,6 +480,7 @@ mkParsers t = unlines $ [terms, atomics, formulas, exposed]
       , printf "      x <- identifier lexer%s" name
       , printf "      e <- parens lexer%s parse%s" name name
       , printf "      return $ %sForAll x e" name
+      , ""
       ,        "    parseExists = do"
       , printf "      reserved lexer%s \"Exists\"" name
       , printf "      x <- identifier lexer%s" name
@@ -500,6 +501,123 @@ mkParsers t = unlines $ [terms, atomics, formulas, exposed]
 -- }}}
 
 -- {{{ Make the converters
+
+data Term a = Var a
+            | Const a 
+            | Fun a [Term a] 
+            | Output 
+            | Input Int
+
+data Atomic a = Eq (Term a) (Term a) 
+              | Rel a [Term a]
+
+data Expr a = Atom (Atomic a) 
+            | And (Expr a) (Expr a)
+            | Or (Expr a) (Expr a)
+            | Implies (Expr a) (Expr a)
+            | Iff (Expr a) (Expr a)
+            | Not (Expr a)
+            | ForAll a (Expr a)
+            | Exists a (Expr a)
+
+lexer :: TokenParser ()
+lexer = makeTokenParser languageDef
+  where
+    languageDef =
+      emptyDef { identStart = letter
+               , identLetter = alphaNum
+               , reservedNames = [ "Eq"
+                                 , "Not"
+                                 , "ForAll"
+                                 , "Exists"
+                                 , "o"
+                                 , "v"
+                                 ]
+               , reservedOpNames = [ "&&", "||", "->", "<->" ]
+               }
+
+parseTerm :: Parser (Term String)
+parseTerm = try parseOut <|> try parseIn <|> try parseFun <|> try parseVar
+  where
+    parseOut = do
+      reserved lexer "o"
+      return Output
+
+    parseIn = do
+      reserved lexer "v"
+      n <- natural lexer
+      return $ Input $ fromInteger n
+
+    parseFun = do
+      f <- identifier lexer
+      char '('
+      whiteSpace lexer
+      t <- parseTerm
+      ts <- many $ char ',' >> whiteSpace lexer >> parseTerm
+      char ')'
+      whiteSpace lexer
+      return $ Fun f (t:ts)
+
+    parseVar = do
+      v <- identifier lexer
+      case (isUpper (v!!0)) of
+        True  -> return $ Const v
+        False -> return $ Var v
+    
+parseAtomic :: Parser (Atomic String)
+parseAtomic = try parseEq <|> try parseRel
+  where
+    parseEq = do
+      reserved lexer "Eq"
+      char '('
+      whiteSpace lexer
+      x1 <- parseTerm
+      char ','
+      whiteSpace lexer
+      x2 <- parseTerm
+      char ')'
+      whiteSpace lexer
+      return $ Eq x1 x2
+
+    parseRel = do
+      r <- identifier lexer
+      char '('
+      whiteSpace lexer
+      t <- parseTerm
+      ts <- many $ char ',' >> whiteSpace lexer >> parseTerm
+      char ')'
+      whiteSpace lexer
+      return $ Rel r (t:ts)
+
+parseExpr :: Parser (Expr String)
+parseExpr = (flip buildExpressionParser) parseExpr' $ [
+    [ Prefix (reserved lexer "Not" >> return Not) ]
+  , [ Infix (reservedOp lexer "&&" >> return And) AssocLeft ]
+  , [ Infix (reservedOp lexer "||" >> return Or) AssocLeft ]
+  , [ Infix (reservedOp lexer "->" >> return Implies) AssocRight
+    , Infix (reservedOp lexer "<->" >> return Iff) AssocLeft
+    ]
+  ]
+      
+parseExpr' :: Parser (Expr String)
+parseExpr' = (parens lexer parseExpr) <|> parseForAll <|> parseExists <|> parseAtom
+  where
+    parseAtom = do
+      x <- parseAtomic
+      return $ Atom x
+
+    parseForAll = do
+      reserved lexer "ForAll"
+      x <- identifier lexer
+      e <- parens lexer parseExpr
+      return $ ForAll x e
+
+    parseExists = do
+      reserved lexer "Exists"
+      x <- identifier lexer
+      e <- parens lexer parseExpr
+      return $ Exists x e
+    
 
 mkConverters :: Theory -> String
 mkConverters t = unlines $ [ classDefn, inheritance, instances ]
