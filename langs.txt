@@ -3,7 +3,7 @@ relNew (In, 2)
 
 BSTA: 
 extending BST
-constDef Empty ForAll z (Not In(z,o))
+funDef (Empty,0) ForAll z (Not In(z,o))
 funDef (PowerSet,1) ForAll z (In(z,o) <-> ForAll w (In(w,z) -> In(w,v1)))
 relDef (Subset,2) ForAll z (In(z,v1) -> In(z,v2))
 funDef (Union,1) ForAll z (In(z,o) <-> Exists w (In(z,w) && In(w,v1)))

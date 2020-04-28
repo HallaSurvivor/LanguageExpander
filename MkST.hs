@@ -22,11 +22,18 @@ main = do
       []    -> putStrLn $ "Write a help message?" -- print syntax, etc?
       (x:_) -> do
         s <- readFile x
+        
         -- Turn the file into a [[String]], a list of definition blocks
         let ss = filter (\l -> length l > 1) $ groupBy (\x y -> x /= "" && y /= "") $ lines s
+
+        -- Parse each of the blocks, and turn them into a [Theory]
         ts <- sequence $ fmap parseBlock ss
+
+        -- If T1 extends T2, add all the T2 symbols into the T1 language
         let theoryMap = M.fromList [(_name t, t) | t <- ts]
         let ts' = evalState (mapM addDerivations ts) theoryMap
+
+        -- Actually write the file
         writeFile "Converter.hs" (boilerplate ts' ++ concatMap mkST ts')
   where
     mkST :: Theory -> String
@@ -41,31 +48,27 @@ main = do
       , ""
       ]
 
-addDerivations :: Theory -> State (M.Map String Theory) Theory
-addDerivations t = do
-    tm <- get
-    let es   = fmap (tm M.!?) (_extending t)
-    let es'  = catMaybes es -- one day maybe we'll thread errors around
-    let tNew = t <> foldMap derived es'
-    put $ M.insert (_name t) tNew tm
-    return tNew
-  where
-    derived t = mempty { _derivedConstants = _constants t ++ _derivedConstants t 
-                       , _derivedFunctions = _functions t ++ _derivedFunctions t
-                       , _derivedRelations = _relations t ++ _derivedRelations t
-                       }
+    addDerivations :: Theory -> State (M.Map String Theory) Theory
+    addDerivations t = do
+        tm <- get
+        let es   = fmap (tm M.!?) (_extending t)
+        let es'  = catMaybes es -- one day maybe we'll thread errors around
+        let tNew = t <> foldMap derived es'
+        put $ M.insert (_name t) tNew tm
+        return tNew
+      where
+        derived t = mempty { _derivedFunctions = _functions t ++ _derivedFunctions t
+                           , _derivedRelations = _relations t ++ _derivedRelations t
+                           }
 
 -- {{{ Parse the input file
 
 data Theory = Theory { _name             :: String
                      , _extending        :: [String]
-                     , _constants        :: [String]
                      , _functions        :: [(String, Int)]
                      , _relations        :: [(String, Int)]
-                     , _constDefns       :: [(String, String)]
                      , _funDefns         :: [(String, String)]
                      , _relDefns         :: [(String, String)]
-                     , _derivedConstants :: [String]
                      , _derivedFunctions :: [(String,Int)]
                      , _derivedRelations :: [(String,Int)]
                      } deriving Show
@@ -74,18 +77,15 @@ instance Semigroup Theory where
   t <> s = Theory
     (_name t       <> _name s)
     (_extending t  <> _extending s)
-    (_constants t  <> _constants s)
     (_functions t  <> _functions s)
     (_relations t  <> _relations s)
-    (_constDefns t <> _constDefns s)
     (_funDefns t   <> _funDefns s)
     (_relDefns t   <> _relDefns s)
-    (_derivedConstants t <> _derivedConstants s)
     (_derivedFunctions t <> _derivedFunctions s)
     (_derivedRelations t <> _derivedRelations s)
 
 instance Monoid Theory where
-  mempty = Theory "" [] [] [] [] [] [] [] [] [] []
+  mempty = Theory "" [] [] [] [] [] [] []
 
 
 word :: Parser String
@@ -107,15 +107,6 @@ extendParser = do
   spaces
   eof
   return $ mempty {_extending = [st]}
-
-constNewParser :: Parser Theory
-constNewParser = do
-  string "constNew"
-  spaces
-  c <- word
-  spaces
-  eof
-  return $ mempty {_constants = [c]}
 
 funNewParser :: Parser Theory
 funNewParser = do
@@ -150,16 +141,6 @@ relNewParser = do
   spaces
   eof
   return $ mempty {_relations = [(r,read n)]}
-
-constDefParser :: Parser Theory
-constDefParser = do
-  string "constDef"
-  spaces
-  c <- word
-  spaces
-  d <- many1 anyChar
-  eof
-  return $ mempty {_constants = [c], _constDefns = [(c,d)]}
 
 funDefParser :: Parser Theory
 funDefParser = do
@@ -200,10 +181,8 @@ relDefParser = do
 lineParser :: Parser Theory
 lineParser =  try nameParser
           <|> try extendParser
-          <|> try constNewParser
           <|> try funNewParser
           <|> try relNewParser
-          <|> try constDefParser
           <|> try funDefParser
           <|> try relDefParser
 
@@ -216,7 +195,7 @@ parseBlock s = fmap mconcat $ sequence $ fmap parseLine s
 
 -- }}}
 
--- {{{ Top Level Stuff
+-- {{{ Boilerplate
 
 boilerplate :: [Theory] -> String
 boilerplate ts = 
@@ -293,30 +272,28 @@ boilerplate ts =
 mkDataTypes :: Theory -> String
 mkDataTypes t = unlines $ [terms, atomics, formulas]
   where
-    (name, cs, fs, rs) = ( _name t
-                         , _derivedConstants t ++ _constants t
-                         , _derivedFunctions t ++ _functions t
-                         , _derivedRelations t ++ _relations t
-                         )
+    (name, fs, rs) = ( _name t
+                     , _derivedFunctions t ++ _functions t
+                     , _derivedRelations t ++ _relations t
+                     )
 
-    mkLine label (symbol, arity) = "  | " ++ name ++ symbol ++ mkArgs
+    mkLine :: String -> (String, Int) -> String
+    mkLine label (symbol, arity) = printf "  | %s%s%s" name symbol args
       where
-        mkArgs = concat $ take arity $ repeat $ printf " (%s%s a)" name label
+        args :: String
+        args = concat $ take arity $ repeat $ printf " (%s%s a)" name label
 
     terms = unlines $ 
       [ printf "data %sTerm a =" name
       , printf "    %sVar a" name
-      ] ++ 
-      (fmap (mkLine "Term") $ zip cs (repeat 0)) ++
-      fmap (mkLine "Term") fs
+      ] ++ (fmap (mkLine "Term") fs)
 
     atomics = unlines $ 
       [ printf "data %sAtomic a =" name
       , printf "    %sTrue" name
       , printf "  | %sFalse" name
       , printf "  | %sEq (%sTerm a) (%sTerm a)" name name name
-      ] ++ 
-      fmap (mkLine "Term") rs
+      ] ++ (fmap (mkLine "Term") rs)
 
     formulas = unlines $
       [ printf "data %s a = %sAtom (%sAtomic a)" name name name
@@ -332,19 +309,21 @@ mkDataTypes t = unlines $ [terms, atomics, formulas]
 mkPrettyPrinter :: Theory -> String
 mkPrettyPrinter t = unlines $ [terms, atomics, formulas, showDefns]
   where
-    (name, cs, fs, rs) = ( _name t
-                         , _derivedConstants t ++ _constants t
-                         , _derivedFunctions t ++ _functions t
-                         , _derivedRelations t ++ _relations t
-                         )
-
+    (name, fs, rs) = ( _name t
+                     , _derivedFunctions t ++ _functions t
+                     , _derivedRelations t ++ _relations t
+                     )
+    mkLine :: (String, Int) -> String
     mkLine (symbol, 0) = 
         printf "    go (%s%s) = [\"%s\"]" name symbol symbol
     mkLine (symbol, arity) = 
         printf "    go (%s%s%s) = [\"%s\"] ++ draw [%s]" name symbol args symbol treeArgs
       where
-        args = concat $ take arity $ map (" x"++) $ map show [1..]
-        treeArgs = drop 1 $ concat $ take arity $ map (",x"++) $ map show [1..]
+        args :: String
+        args = concat $ [printf " x%d" i | i <- [1..arity]]
+
+        treeArgs :: String
+        treeArgs = concat $ intersperse ", " $ [printf "x%d" i | i <- [1..arity]]
 
     terms = unlines $
       [ printf "draw%sTerm :: (Show a) => %sTerm a -> [String]" name name
@@ -353,9 +332,7 @@ mkPrettyPrinter t = unlines $ [terms, atomics, formulas, showDefns]
       , printf "    draw :: (Show a) => [%sTerm a] -> [String]" name
       , printf "    draw = drawGenericSubTree draw%sTerm" name
       , printf "    go (%sVar x) = [show x]" name
-      ] ++
-      (fmap (\c -> printf "    go (%s%s) = [\"%s\"]" name c c) cs) ++ 
-      fmap mkLine fs
+      ] ++ (fmap mkLine fs)
 
     atomics = unlines $
       [ printf "draw%sAtomic :: (Show a) => %sAtomic a -> [String]" name name
@@ -363,8 +340,7 @@ mkPrettyPrinter t = unlines $ [terms, atomics, formulas, showDefns]
       , "  where"
       , printf "    draw :: (Show a) => [%sTerm a] -> [String]" name
       , printf "    draw = drawGenericSubTree draw%sTerm" name
-      ] ++
-      (fmap mkLine $ ("True", 0) : ("False", 0) : ("Eq", 2) : rs)
+      ] ++ (fmap mkLine $ ("True", 0) : ("False", 0) : ("Eq", 2) : rs)
 
     formulas = unlines
       [ printf "draw%s :: (Show a) => %s a -> [String]" name name
@@ -413,28 +389,25 @@ mkLexer t = unlines $
     , "                                 , \"Exists\""
     ] ++ 
     (
-      fmap (printf "                                 , \"%s\"") $ 
-        cs ++ map fst rs ++ map fst fs
+      fmap (printf "                                 , \"%s\"") $ map fst $ rs ++ fs
     ) ++
     [ "                                 ]"
     , "               , reservedOpNames = [ \"&&\", \"||\", \"->\", \"<->\" ]"
     , "               }"
     ]
   where
-    (name, cs, fs, rs) = ( _name t
-                         , _derivedConstants t ++ _constants t
-                         , _derivedFunctions t ++ _functions t
-                         , _derivedRelations t ++ _relations t
-                         )
+    (name, fs, rs) = ( _name t
+                     , _derivedFunctions t ++ _functions t
+                     , _derivedRelations t ++ _relations t
+                     )
 
 mkParsers :: Theory -> String
 mkParsers t = unlines $ [terms, atomics, formulas, exposed]
   where
-    (name, cs, fs, rs) = ( _name t
-                         , _derivedConstants t ++ _constants t
-                         , _derivedFunctions t ++ _functions t
-                         , _derivedRelations t ++ _relations t
-                         )
+    (name, fs, rs) = ( _name t
+                     , _derivedFunctions t ++ _functions t
+                     , _derivedRelations t ++ _relations t
+                     )
 
     mkLine [n] = [ printf "      x%d <- parse%sTerm" n name
                  ,        "      char \')\'"
@@ -446,7 +419,7 @@ mkParsers t = unlines $ [terms, atomics, formulas, exposed]
                      ] ++ (mkLine is)
 
     vars :: Int -> String
-    vars n = concat $ fmap (printf " x%d") [1..n]
+    vars n = concat $ [printf " x%d" i | i <- [1..n]]
 
     mkDefn (symbol, 0) = 
       [ printf "    parse%s%s = do" name symbol
@@ -464,33 +437,22 @@ mkParsers t = unlines $ [terms, atomics, formulas, exposed]
       , ""
       ]
 
-    mkConsts symbol = 
-      [ printf "    parse%s%s = do" name symbol
-      , printf "      reserved lexer%s \"%s\"" name symbol
-      , printf "      return %s%s" name symbol
-      , ""
-      ]
-    
     terms = unlines $
       [ printf "parse%sTerm :: Parser (%sTerm String)" name name
       , printf "parse%sTerm = parse%sVar" name name
-      ] ++
-      (fmap (printf "    <|> parse%s%s" name) (cs ++ fmap fst fs)) ++
+      ] ++ (fmap (printf "    <|> parse%s%s" name) (fmap fst fs)) ++
       [ "  where"
       , "    parse" ++ name ++ "Var = do"
       , "      v <- identifier lexer" ++ name
       , "      return $ " ++ name ++ "Var v"
       , ""
-      ] ++
-      (concat $ fmap mkConsts cs) ++ 
-      (concat $ fmap mkDefn fs)
+      ] ++ (concat $ fmap mkDefn fs)
 
     atomics = unlines $
       [ printf "parse%sAtomic :: Parser (%sAtomic String)" name name
       , printf "parse%sAtomic =" name
       , printf "    parse%sEq" name
-      ] ++ 
-      (fmap (\(r,_) -> printf "    <|> parse%s%s" name r) rs) ++
+      ] ++ (fmap (\(r,_) -> printf "    <|> parse%s%s" name r) rs) ++
       [ "  where" ] ++
       (concat $ fmap mkDefn $ ("True",0) : ("False",0) : ("Eq", 2):rs)
 
@@ -712,6 +674,7 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
         , printf "      convertExpr (%sExists a x)  = %sExists a <$> (convertExpr x)" name e
         , ""
         , printf "      foldAtomic a ds = %sAnd (%sAtom a) (foldr %sAnd (%sAtom %sTrue) ds)" e e e e e
+        , ""
         ] ++ atomicDefns ++
         [ ""
         ,        "      convertTerm = undefined"
@@ -723,8 +686,6 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
 
         termDefns = concat [ fmap mkDerivedFun (_derivedFunctions t)
                            , fmap mkDefinedFun (_funDefns t)
-                           , fmap mkDerivedConst (_derivedConstants t)
-                           , fmap mkDefinedConst (_constDefns t)
                            ]
 
         args :: Int -> String
@@ -742,12 +703,7 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
                ]
             
         mkDerivedFun :: (String, Int) -> String
-        mkDerivedFun (f,n) = printf "      convertTerm (%s%s%s) = %s%s%s" name f (args n) e f convertedArgs
-          where
-            convertedArgs = concat $ take n $ zipWith (\s n -> s ++ show n ++ ")") (repeat $ " (convertTerm x") [1..]
-
-        mkDerivedConst :: String -> String
-        mkDerivedConst c = printf "      convertTerm %s%s = %s%s" name c e c
+        mkDerivedFun (f,n) = undefined
 
         getIn :: (Eq a) => Expr a -> Int
         getIn (And x y)     = max (getIn x) (getIn y)
@@ -779,12 +735,6 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
           where
             t = useParser d
             n = getIn t
-            converted = "undefined"
-
-        mkDefinedConst :: (String, String) -> String
-        mkDefinedConst (c,d) = printf "      convertTerm %s%s = %s" name c converted
-          where
-            t = useParser d
             converted = "undefined"
 
 -- }}}
