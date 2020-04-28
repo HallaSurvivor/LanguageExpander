@@ -223,11 +223,13 @@ boilerplate ts =
     unlines $ [ "{-# LANGUAGE FlexibleInstances #-}"
               , "{-# LANGUAGE UndecidableInstances #-}"
               , "module Converter where"
-              , "import Text.Parsec"
+              , "import Text.Parsec hiding (State)"
               , "import Text.Parsec.String"
               , "import Text.Parsec.Token"
               , "import Text.Parsec.Language"
               , "import Text.Parsec.Expr"
+              , "import Control.Monad.State"
+              , "import qualified Data.Map as M"
               , ""
               , "drawGenericSubTree :: (a -> [String]) -> [a] -> [String]"
               , "drawGenericSubTree drawTree = go"
@@ -237,6 +239,29 @@ boilerplate ts =
               , "    go (t:ts) = \"|\" : shift \"+ \" \"|  \" (drawTree t) ++ go ts"
               , ""
               , "    shift first other = zipWith (++) (first : repeat other)"
+              , ""
+              , "type Context = ([String], M.Map String String)"
+              , ""
+              , "ctx0 :: Context"
+              , "ctx0 = ([\"x\" ++ show i | i <- [1..]], M.empty)"
+              , ""
+              , "fresh :: State Context String"
+              , "fresh = do"
+              , "  (v:vs, m) <- get"
+              , "  put (vs, m)"
+              , "  return v"
+              , ""
+              , "addVar :: String -> State Context String"
+              , "addVar s = do"
+              , "  v <- fresh"
+              , "  modify (\\(vs,m) -> (vs, M.insert s v m))"
+              , "  return v"
+              , ""
+              , "getVar :: String -> State Context String"
+              , "getVar s = do"
+              , "  (_,m) <- get"
+              , "  return $ m M.! s -- make this fail gracefully"
+              , ""
               , ""
               ] ++ parseInput ++
               [ ""
@@ -313,6 +338,8 @@ mkPrettyPrinter t = unlines $ [terms, atomics, formulas, showDefns]
                          , _derivedRelations t ++ _relations t
                          )
 
+    mkLine (symbol, 0) = 
+        printf "    go (%s%s) = [\"%s\"]" name symbol symbol
     mkLine (symbol, arity) = 
         printf "    go (%s%s%s) = [\"%s\"] ++ draw [%s]" name symbol args symbol treeArgs
       where
@@ -673,7 +700,7 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
 
     mkInstance e = unlines $
         [ printf "instance ConvertibleTo%s %s where" e name
-        , printf "  convertTo%s = convertExpr" e
+        , printf "  convertTo%s = (flip evalState ctx0) . convertExpr" e
         ,        "    where"
         , printf "      convertExpr (%sAtom x)      = convertAtomic x" name
         , printf "      convertExpr (%sAnd x y)     = %sAnd      <$> (convertExpr x) <*> (convertExpr y)" name e
@@ -687,8 +714,8 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
         , printf "      foldAtomic a ds = %sAnd (%sAtom a) (foldr %sAnd (%sAtom %sTrue) ds)" e e e e e
         ] ++ atomicDefns ++
         [ ""
-        , printf "      convertTerm (%sVar x) = %sVar x" name e
-        ] ++ termDefns
+        ,        "      convertTerm = undefined"
+        ]
       where
         atomicDefns = concat [ fmap mkDerivedRel (("True",0) : ("False",0) : ("Eq",2) : (_derivedRelations t))
                              , fmap mkDefinedRel (_relDefns t) 
