@@ -3,7 +3,7 @@ module MkST where
 import System.IO
 import System.Environment
 import Data.List
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromJust)
 import Data.Char (isUpper)
 import qualified Data.Map.Strict as M
 import Control.Monad.State
@@ -287,7 +287,9 @@ mkDataTypes t = unlines $ [terms, atomics, formulas]
 
     atomics = unlines $ 
       [ printf "data %sAtomic a =" name
-      , printf "    %sEq (%sTerm a) (%sTerm a)" name name name
+      , printf "    %sTrue" name
+      , printf "  | %sFalse" name
+      , printf "  | %sEq (%sTerm a) (%sTerm a)" name name name
       ] ++ 
       fmap (mkLine "Term") rs
 
@@ -335,7 +337,7 @@ mkPrettyPrinter t = unlines $ [terms, atomics, formulas, showDefns]
       , printf "    draw :: (Show a) => [%sTerm a] -> [String]" name
       , printf "    draw = drawGenericSubTree draw%sTerm" name
       ] ++
-      (fmap mkLine $ ("Eq", 2) : rs)
+      (fmap mkLine $ ("True", 0) : ("False", 0) : ("Eq", 2) : rs)
 
     formulas = unlines
       [ printf "draw%s :: (Show a) => %s a -> [String]" name name
@@ -376,7 +378,9 @@ mkLexer t = unlines $
     , "    languageDef ="
     , "      emptyDef { identStart = letter"
     , "               , identLetter = alphaNum"
-    , "               , reservedNames = [ \"Eq\""
+    , "               , reservedNames = [ \"True\""
+    , "                                 , \"False\""
+    , "                                 , \"Eq\""
     , "                                 , \"Not\""
     , "                                 , \"ForAll\""
     , "                                 , \"Exists\""
@@ -417,6 +421,12 @@ mkParsers t = unlines $ [terms, atomics, formulas, exposed]
     vars :: Int -> String
     vars n = concat $ fmap (printf " x%d") [1..n]
 
+    mkDefn (symbol, 0) = 
+      [ printf "    parse%s%s = do" name symbol
+      , printf "      reserved lexer%s \"%s\"" name symbol
+      , printf "      return %s%s" name symbol
+      , ""
+      ]
     mkDefn (symbol, arity) = 
       [ printf "    parse%s%s = do" name symbol
       , printf "      reserved lexer%s \"%s\"" name symbol
@@ -455,7 +465,7 @@ mkParsers t = unlines $ [terms, atomics, formulas, exposed]
       ] ++ 
       (fmap (\(r,_) -> printf "    <|> parse%s%s" name r) rs) ++
       [ "  where" ] ++
-      (concat $ fmap mkDefn $ ("Eq", 2):rs)
+      (concat $ fmap mkDefn $ ("True",0) : ("False",0) : ("Eq", 2):rs)
 
     formulas = unlines $
       [ printf "parse%s :: Parser (%s String)" name name
@@ -509,7 +519,9 @@ data Term a = Var a
             | Input Int
             deriving Show
 
-data Atomic a = Eq (Term a) (Term a) 
+data Atomic a = True'
+              | False'
+              | Eq (Term a) (Term a) 
               | Rel a [Term a]
               deriving Show
 
@@ -529,12 +541,13 @@ lexer = makeTokenParser languageDef
     languageDef =
       emptyDef { identStart = letter
                , identLetter = alphaNum
-               , reservedNames = [ "Eq"
+               , reservedNames = [ "True"
+                                 , "False"
+                                 , "Eq"
                                  , "Not"
                                  , "ForAll"
                                  , "Exists"
                                  , "o"
-                                 , "v"
                                  ]
                , reservedOpNames = [ "&&", "||", "->", "<->" ]
                }
@@ -568,8 +581,16 @@ parseTerm = try parseOut <|> try parseIn <|> try parseFun <|> try parseVar
         False -> return $ Var v
     
 parseAtomic :: Parser (Atomic String)
-parseAtomic = try parseEq <|> try parseRel
+parseAtomic = try parseTrue <|> try parseFalse <|> try parseEq <|> try parseRel
   where
+    parseTrue = do
+      reserved lexer "True"
+      return True'
+
+    parseFalse = do
+      reserved lexer "False"
+      return False'
+
     parseEq = do
       reserved lexer "Eq"
       char '('
@@ -654,22 +675,22 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
         [ printf "instance ConvertibleTo%s %s where" e name
         , printf "  convertTo%s = convertExpr" e
         ,        "    where"
-        , printf "      convertExpr (%sAtom x)      = %sAtom     (convertAtomic x)" name e
-        , printf "      convertExpr (%sAnd x y)     = %sAnd      (convertExpr x) (convertExpr y)" name e
-        , printf "      convertExpr (%sOr x y)      = %sOr       (convertExpr x) (convertExpr y)" name e
-        , printf "      convertExpr (%sImplies x y) = %sImplies  (convertExpr x) (convertExpr y)" name e
-        , printf "      convertExpr (%sIff x y)     = %sIff      (convertExpr x) (convertExpr y)" name e
-        , printf "      convertExpr (%sNot x)       = %sNot      (convertExpr x)" name e
-        , printf "      convertExpr (%sForAll a x)  = %sForAll a (convertExpr x)" name e
-        , printf "      convertExpr (%sExists a x)  = %sExists a (convertExpr x)" name e
+        , printf "      convertExpr (%sAtom x)      = convertAtomic x" name
+        , printf "      convertExpr (%sAnd x y)     = %sAnd      <$> (convertExpr x) <*> (convertExpr y)" name e
+        , printf "      convertExpr (%sOr x y)      = %sOr       <$> (convertExpr x) <*> (convertExpr y)" name e
+        , printf "      convertExpr (%sImplies x y) = %sImplies  <$> (convertExpr x) <*> (convertExpr y)" name e
+        , printf "      convertExpr (%sIff x y)     = %sIff      <$> (convertExpr x) <*> (convertExpr y)" name e
+        , printf "      convertExpr (%sNot x)       = %sNot      <$> (convertExpr x)" name e
+        , printf "      convertExpr (%sForAll a x)  = %sForAll a <$> (convertExpr x)" name e
+        , printf "      convertExpr (%sExists a x)  = %sExists a <$> (convertExpr x)" name e
         , ""
-        , printf "      convertAtomic (%sEq x y) = %sEq (convertTerm x) (convertTerm y)" name e
+        , printf "      foldAtomic a ds = %sAnd (%sAtom a) (foldr %sAnd (%sAtom %sTrue) ds)" e e e e e
         ] ++ atomicDefns ++
         [ ""
         , printf "      convertTerm (%sVar x) = %sVar x" name e
         ] ++ termDefns
       where
-        atomicDefns = concat [ fmap mkDerivedRel (_derivedRelations t)
+        atomicDefns = concat [ fmap mkDerivedRel (("True",0) : ("False",0) : ("Eq",2) : (_derivedRelations t))
                              , fmap mkDefinedRel (_relDefns t) 
                              ]
 
@@ -679,12 +700,19 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
                            , fmap mkDefinedConst (_constDefns t)
                            ]
 
-        args n = concat $ take n $ zipWith (++) (repeat $ " x") (fmap show [1..])
+        args :: Int -> String
+        args  n = concat $ [printf " x%d"  i | i <- [1..n]]
+
+        args' :: Int -> String
+        args' n = concat $ [printf " x%d'" i | i <- [1..n]]
 
         mkDerivedRel :: (String, Int) -> String
-        mkDerivedRel (r,n) = printf "      convertAtomic (%s%s%s) = %s%s%s" name r (args n) e r convertedArgs
-          where
-            convertedArgs = concat $ take n $ zipWith (\s n -> s ++ show n ++ ")") (repeat $ " (convertTerm x") [1..]
+        mkDerivedRel (r,n) = unlines $ 
+               [ printf "      convertAtomic (%s%s%s) = do" name r (args n) ] 
+            ++ ( fmap (\i -> printf "        (x%d', dx%d) <- convertTerm x%d" i i i) [1..n] )
+            ++ [ printf "        let ds = concat [%s]" (concat $ intersperse ", " $ fmap (printf "dx%d") [1..n])
+               , printf "        return $ foldAtomic (%s%s%s) ds" e r (args' n)
+               ]
             
         mkDerivedFun :: (String, Int) -> String
         mkDerivedFun (f,n) = printf "      convertTerm (%s%s%s) = %s%s%s" name f (args n) e f convertedArgs
@@ -717,16 +745,13 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
           where
             t = useParser d
             n = getIn t
-
             converted = "undefined"
-
             
         mkDefinedFun :: (String, String) -> String
         mkDefinedFun (f,d) = printf "      convertTerm (%s%s%s) = %s" name f (args n) converted
           where
             t = useParser d
             n = getIn t
-
             converted = "undefined"
 
         mkDefinedConst :: (String, String) -> String
