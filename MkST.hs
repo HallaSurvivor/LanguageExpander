@@ -647,7 +647,7 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
 
     classDefn = unlines $
       [ printf "class ConvertibleTo%s t where" name
-      , printf "  convertTo%s :: t a -> %s a" name name
+      , printf "  convertTo%s :: t String -> %s String" name name
       , ""
       ]
 
@@ -673,7 +673,8 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
         , printf "      convertExpr (%sForAll a x)  = %sForAll a <$> (convertExpr x)" name e
         , printf "      convertExpr (%sExists a x)  = %sExists a <$> (convertExpr x)" name e
         , ""
-        , printf "      foldAtomic a ds = %sAnd (%sAtom a) (foldr %sAnd (%sAtom %sTrue) ds)" e e e e e
+        , printf "      fold%s :: %s a -> [%s a] -> %s a" e e e e
+        , printf "      fold%s x ds = %sAnd x (foldr %sAnd (%sAtom %sTrue) ds)" e e e e e
         , ""
         ] ++ atomicDefns ++
         [ ""
@@ -745,7 +746,9 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
           put (i+1, M.insert a vi m)
           x' <- expandTree x
           return $ printf "%sExists (%s) (%s)" e vi x'
-        expandTree (Atom x) = expandTree' x
+        expandTree (Atom x) = do
+            x' <- expandTree' x
+            return $ printf "%sAtom (%s)" e x'
           where
             expandTree' :: Atomic String -> State (Int, M.Map String String) String
             expandTree' True' = return $ printf "%sTrue" e
@@ -770,7 +773,7 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
               let xs'' = concatMap (printf " (%s)" :: String -> String) xs'
               return $ printf "%s%s%s" e f xs''
             expandTree'' Output = return "o"
-            expandTree'' (Input n) = return $ printf "v%d" n
+            expandTree'' (Input n) = return $ printf "x%d'" n
 
         args :: Int -> String
         args  n = concat $ [printf " x%d"  i | i <- [1..n]]
@@ -783,7 +786,7 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
                [ printf "      convertAtomic (%s%s%s) = do" name r (args n) ] 
             ++ ( fmap (\i -> printf "        (x%d', dx%d) <- convertTerm x%d" i i i) [1..n] )
             ++ [ printf "        let ds = concat [%s]" (concat $ intersperse ", " $ fmap (printf "dx%d") [1..n])
-               , printf "        return $ foldAtomic (%s%s%s) ds" e r (args' n)
+               , printf "        return $ fold%s (%sAtom (%s%s%s)) ds" e e e r (args' n)
                ]
             
         mkDefinedRel :: (String, String) -> [String]
@@ -792,7 +795,7 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
          ++ ( fmap (\i -> printf "        (x%d', dx%d) <- convertTerm x%d" i i i) [1..n] )
          ++ [ printf "        let ds = concat [%s]" (concat $ intersperse ", " $ fmap (printf "dx%d") [1..n]) ]
          ++ ( fmap (\i -> printf "        v%d <- fresh" i) [1..q] )
-         ++ [ printf "        return $ foldAtomic (%s) ds" converted ] 
+         ++ [ printf "        return $ fold%s (%s) ds" e converted ] 
           where
             t = useParser d
             n = getIn t
