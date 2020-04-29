@@ -676,10 +676,11 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
         , printf "      fold%s :: %s a -> [%s a] -> %s a" e e e e
         , printf "      fold%s x ds = %sAnd x (foldr %sAnd (%sAtom %sTrue) ds)" e e e e e
         , ""
+        , printf "      convertAtomic :: %sAtomic String -> State Context (%s String)" name e
         ] ++ atomicDefns ++
         [ ""
-        ,        "      convertTerm = undefined"
-        ]
+        , printf "      convertTerm :: %sTerm String -> State Context (%sTerm String, [%s String])" name e e
+        ] ++ termDefns
       where
         atomicDefns = concat $  fmap mkDerivedRel (("True",0) : ("False",0) : ("Eq",2) : (_derivedRelations t))
                              ++ fmap mkDefinedRel (_relDefns t) 
@@ -803,7 +804,12 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
             converted = evalState (expandTree t) (1,M.empty)
             
         mkDerivedFun :: (String, Int) -> [String]
-        mkDerivedFun (f,n) = undefined
+        mkDerivedFun (f,n) = 
+               [ printf "      convertTerm (%s%s%s) = do" name f (args n) ] 
+            ++ ( fmap (\i -> printf "        (x%d', dx%d) <- convertTerm x%d" i i i) [1..n] )
+            ++ [ printf "        let ds = concat [%s]" (concat $ intersperse ", " $ fmap (printf "dx%d") [1..n])
+               , printf "        return $ (%s%s%s, ds)" e f (args' n)
+               ]
 
         mkDefinedFun :: (String, String) -> [String]
         mkDefinedFun (f,d) = 
