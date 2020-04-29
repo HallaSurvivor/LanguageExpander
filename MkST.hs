@@ -801,7 +801,7 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
             t = useParser d
             n = getIn t
             q = countQuantifiers t
-            converted = evalState (expandTree t) (1,M.empty)
+            converted = evalState (expandTree t) (1, M.empty)
             
         mkDerivedFun :: (String, Int) -> [String]
         mkDerivedFun (f,n) = 
@@ -813,10 +813,17 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
 
         mkDefinedFun :: (String, String) -> [String]
         mkDefinedFun (f,d) = 
-            [printf "      convertTerm (%s%s%s) = %s" name f (args n) converted]
+             [ printf "      convertTerm (%s%s%s) = do" name f (args n) ]
+          ++ ( fmap (\i -> printf "        (x%d', dx%d) <- convertTerm x%d" i i i) [1..n] )
+          ++ [ printf "        let ds = concat [%s]" (concat $ intersperse ", " $ fmap (printf "dx%d") [1..n]) ]
+          ++ ( fmap (\i -> printf "        v%d <- fresh" i) [1..q] )
+          ++ [        "        o <- fresh"
+             , printf "        return $ (o, ds ++ [%s])" converted
+             ] 
           where
             t = useParser d
             n = getIn t
-            converted = "undefined"
+            q = countQuantifiers t
+            converted = evalState (expandTree t) (1, M.empty)
 
 -- }}}
