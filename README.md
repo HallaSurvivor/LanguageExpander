@@ -8,4 +8,6 @@ TODO - look into the parens thing in the pretty printer
 
 TODO - write a good help message
 
+TODO - make it handle errors gracefully? 
+
 TODO - built BST up all the way to fundamental theorem of calculus, and format it to look like the theorem
