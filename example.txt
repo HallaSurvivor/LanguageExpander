@@ -13,3 +13,11 @@ funDef (Pairing, 2) ForAll z (In(z,o) <-> Eq(z,v1) || Eq(z,v2))
 BSTB:
 extending BSTA
 funDef (BinUnion, 2) Eq(o,Union(Pairing(v1,v2)))
+
+GT:
+funNew (E,0)
+funNew (Inv,1)
+funNew (Mult,2)
+
+GTComm:
+funDef (Comm,2) Eq(o,Mult(Inv(v1),Mult(Inv(v2),Mult(v1,v2))))
