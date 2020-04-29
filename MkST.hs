@@ -41,6 +41,7 @@ main = do
       [ printf "-- {{{ %s" (_name t)
       , mkDataTypes t
       , mkPrettyPrinter t
+      , mkTreePrettyPrinter t
       , mkLexer t
       , mkParsers t
       , mkConverters t
@@ -212,6 +213,7 @@ boilerplate ts =
               , "import Text.Parsec.Expr"
               , "import Control.Monad.State"
               , "import qualified Data.Map as M"
+              , "import Data.List"
               , ""
               , "drawGenericSubTree :: (a -> [String]) -> [a] -> [String]"
               , "drawGenericSubTree drawTree = go"
@@ -313,12 +315,58 @@ mkDataTypes t = unlines $ [terms, atomics, formulas]
       ]
   
 mkPrettyPrinter :: Theory -> String
-mkPrettyPrinter t = unlines $ [terms, atomics, formulas, showDefns]
+mkPrettyPrinter t = unlines $ [terms, atomics, formulas]
   where
     (name, fs, rs) = ( _name t
                      , _derivedFunctions t ++ _functions t
                      , _derivedRelations t ++ _relations t
                      )
+    
+    mkLine (symbol, 0) = printf "    go (%s%s) = \"%s\"" name symbol symbol
+    mkLine (symbol, n) = printf "    go (%s%s%s) = \"%s(\" ++ (%s) ++ \")\"" name symbol args symbol recur
+      where
+        args :: String
+        args = concat $ [printf " x%d" i | i <- [1..n]]
+
+        recur :: String
+        recur = printf "concat $ intersperse \", \" $ fmap print%sTerm [%s]" name (concat $ intersperse ", " $ [printf "x%d" i | i <- [1..n]])
+
+    terms = unlines $
+      [ printf "print%sTerm :: %sTerm String -> String" name name
+      , printf "print%sTerm = go" name
+      ,        "  where"
+      , printf "    go (%sVar x) = x" name
+      ] ++ fmap mkLine fs
+
+    atomics = unlines $
+      [ printf "print%sAtomic :: %sAtomic String -> String" name name
+      , printf "print%sAtomic = go" name
+      ,        "  where"
+      ] ++ (fmap mkLine $ ("True", 0) : ("False", 0) : ("Eq", 2) : rs)
+
+    formulas = unlines
+      [ printf "print%s :: %s String -> String" name name
+      , printf "print%s = go" name
+      ,        "  where"
+      , printf "    go (%sAtom x)      = print%sAtomic x" name name
+      , printf "    go (%sAnd x y)     = \"(\" ++ print%s x ++ \" && \"  ++ print%s y ++ \")\"" name name name
+      , printf "    go (%sOr  x y)     = \"(\" ++ print%s x ++ \" || \"  ++ print%s y ++ \")\"" name name name
+      , printf "    go (%sImplies x y) = \"(\" ++ print%s x ++ \" -> \"  ++ print%s y ++ \")\"" name name name
+      , printf "    go (%sIff x y)     = \"(\" ++ print%s x ++ \" <-> \" ++ print%s y ++ \")\"" name name name
+      , printf "    go (%sNot x)       = \"Not (\" ++ print%s x ++ \")\"" name name
+      , printf "    go (%sForAll a x)  = \"ForAll \" ++ a ++ \" (\" ++ print%s x ++ \")\"" name name
+      , printf "    go (%sExists a x)  = \"Exists \" ++ a ++ \" (\" ++ print%s x ++ \")\"" name name
+      ]
+
+
+mkTreePrettyPrinter :: Theory -> String
+mkTreePrettyPrinter t = unlines $ [terms, atomics, formulas, showDefns]
+  where
+    (name, fs, rs) = ( _name t
+                     , _derivedFunctions t ++ _functions t
+                     , _derivedRelations t ++ _relations t
+                     )
+
     mkLine :: (String, Int) -> String
     mkLine (symbol, 0) = 
         printf "    go (%s%s) = [\"%s\"]" name symbol symbol
@@ -511,7 +559,7 @@ mkParsers t = unlines $ [terms, atomics, formulas, exposed]
       ,        "  spaces"
       , printf "  tree <- parse%s" name
       , printf "  eof"
-      , printf "  return $ show (convertTo%s tree)" s
+      , printf "  return $ print%s (convertTo%s tree)" s s
       ]
 -- }}}
 
