@@ -680,30 +680,11 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
         ,        "      convertTerm = undefined"
         ]
       where
-        atomicDefns = concat [ fmap mkDerivedRel (("True",0) : ("False",0) : ("Eq",2) : (_derivedRelations t))
-                             , fmap mkDefinedRel (_relDefns t) 
-                             ]
+        atomicDefns = concat $  fmap mkDerivedRel (("True",0) : ("False",0) : ("Eq",2) : (_derivedRelations t))
+                             ++ fmap mkDefinedRel (_relDefns t) 
 
-        termDefns = concat [ fmap mkDerivedFun (_derivedFunctions t)
-                           , fmap mkDefinedFun (_funDefns t)
-                           ]
-
-        args :: Int -> String
-        args  n = concat $ [printf " x%d"  i | i <- [1..n]]
-
-        args' :: Int -> String
-        args' n = concat $ [printf " x%d'" i | i <- [1..n]]
-
-        mkDerivedRel :: (String, Int) -> String
-        mkDerivedRel (r,n) = unlines $ 
-               [ printf "      convertAtomic (%s%s%s) = do" name r (args n) ] 
-            ++ ( fmap (\i -> printf "        (x%d', dx%d) <- convertTerm x%d" i i i) [1..n] )
-            ++ [ printf "        let ds = concat [%s]" (concat $ intersperse ", " $ fmap (printf "dx%d") [1..n])
-               , printf "        return $ foldAtomic (%s%s%s) ds" e r (args' n)
-               ]
-            
-        mkDerivedFun :: (String, Int) -> String
-        mkDerivedFun (f,n) = undefined
+        termDefns = concat $  fmap mkDerivedFun (_derivedFunctions t)
+                           ++ fmap mkDefinedFun (_funDefns t)
 
         getIn :: (Eq a) => Expr a -> Int
         getIn (And x y)     = max (getIn x) (getIn y)
@@ -722,16 +703,108 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
             getIn'' (Fun f xs) = maximum $ fmap getIn'' xs
             getIn'' _          = 0
 
+        countQuantifiers :: Expr a -> Int
+        countQuantifiers (And x y)     = (countQuantifiers x) + (countQuantifiers y)
+        countQuantifiers (Or x y)      = (countQuantifiers x) + (countQuantifiers y)
+        countQuantifiers (Implies x y) = (countQuantifiers x) + (countQuantifiers y)
+        countQuantifiers (Iff x y)     = (countQuantifiers x) + (countQuantifiers y)
+        countQuantifiers (Not x)       = (countQuantifiers x)
+        countQuantifiers (ForAll a x)  = 1 + (countQuantifiers x)
+        countQuantifiers (Exists a x)  = 1 + (countQuantifiers x)
+        countQuantifiers (Atom x)      = 0
 
-        mkDefinedRel :: (String, String) -> String
-        mkDefinedRel (r,d) = printf "      convertAtomic (%s%s%s) = %s" name r (args n) converted
+        expandTree :: Expr String -> State (Int, M.Map String String) String
+        expandTree (And x y) = do
+          x' <- expandTree x
+          y' <- expandTree y 
+          return $ printf "%sAnd (%s) (%s)" e x' y'
+        expandTree (Or x y) = do
+          x' <- expandTree x
+          y' <- expandTree y
+          return $ printf "%sOr (%s) (%s)" e x' y'
+        expandTree (Implies x y) = do
+          x' <- expandTree x
+          y' <- expandTree y
+          return $ printf "%sImplies (%s) (%s)" e x' y'
+        expandTree (Iff x y) = do
+          x' <- expandTree x
+          y' <- expandTree y
+          return $ printf "%sIff (%s) (%s)" e x' y'
+        expandTree (Not x) = do
+          x' <- expandTree x
+          return $ printf "%sNot (%s)" e x'
+        expandTree (ForAll a x) = do
+          (i,m) <- get
+          let vi = printf "v%d" i
+          put (i+1, M.insert a vi m)
+          x' <- expandTree x
+          return $ printf "%sForAll (%s) (%s)" e vi x'
+        expandTree (Exists a x) = do
+          (i,m) <- get
+          let vi = printf "v%d" i
+          put (i+1, M.insert a vi m)
+          x' <- expandTree x
+          return $ printf "%sExists (%s) (%s)" e vi x'
+        expandTree (Atom x) = expandTree' x
+          where
+            expandTree' :: Atomic String -> State (Int, M.Map String String) String
+            expandTree' True' = return $ printf "%sTrue" e
+            expandTree' False' = return $ printf "%sFalse" e
+            expandTree' (Eq x y) = do
+              x' <- expandTree'' x
+              y' <- expandTree'' y
+              return $ printf "%sEq (%s) (%s)" e x' y'
+            expandTree' (Rel r xs) = do
+              xs' <- sequence $ fmap expandTree'' xs
+              let xs'' = concatMap (printf " (%s)" :: String -> String) xs'
+              return $ printf "%s%s%s" e r xs''
+
+            expandTree'' :: Term String -> State (Int, M.Map String String) String
+            expandTree'' (Var x) = do
+              (_,m) <- get
+              let v = M.findWithDefault x x m
+              return $ printf "%sVar (%s)" e v
+            expandTree'' (Const x) = return $ printf "%s%s" e x
+            expandTree'' (Fun f xs) = do
+              xs' <- sequence $ fmap expandTree'' xs
+              let xs'' = concatMap (printf " (%s)" :: String -> String) xs'
+              return $ printf "%s%s%s" e f xs''
+            expandTree'' Output = return "o"
+            expandTree'' (Input n) = return $ printf "v%d" n
+
+        args :: Int -> String
+        args  n = concat $ [printf " x%d"  i | i <- [1..n]]
+
+        args' :: Int -> String
+        args' n = concat $ [printf " x%d'" i | i <- [1..n]]
+
+        mkDerivedRel :: (String, Int) -> [String]
+        mkDerivedRel (r,n) = 
+               [ printf "      convertAtomic (%s%s%s) = do" name r (args n) ] 
+            ++ ( fmap (\i -> printf "        (x%d', dx%d) <- convertTerm x%d" i i i) [1..n] )
+            ++ [ printf "        let ds = concat [%s]" (concat $ intersperse ", " $ fmap (printf "dx%d") [1..n])
+               , printf "        return $ foldAtomic (%s%s%s) ds" e r (args' n)
+               ]
+            
+        mkDefinedRel :: (String, String) -> [String]
+        mkDefinedRel (r,d) = 
+            [ printf "      convertAtomic (%s%s%s) = do" name r (args n) ]
+         ++ ( fmap (\i -> printf "        (x%d', dx%d) <- convertTerm x%d" i i i) [1..n] )
+         ++ [ printf "        let ds = concat [%s]" (concat $ intersperse ", " $ fmap (printf "dx%d") [1..n]) ]
+         ++ ( fmap (\i -> printf "        v%d <- fresh" i) [1..q] )
+         ++ [ printf "        return $ foldAtomic (%s) ds" converted ] 
           where
             t = useParser d
             n = getIn t
-            converted = "undefined"
+            q = countQuantifiers t
+            converted = evalState (expandTree t) (1,M.empty)
             
-        mkDefinedFun :: (String, String) -> String
-        mkDefinedFun (f,d) = printf "      convertTerm (%s%s%s) = %s" name f (args n) converted
+        mkDerivedFun :: (String, Int) -> [String]
+        mkDerivedFun (f,n) = undefined
+
+        mkDefinedFun :: (String, String) -> [String]
+        mkDefinedFun (f,d) = 
+            [printf "      convertTerm (%s%s%s) = %s" name f (args n) converted]
           where
             t = useParser d
             n = getIn t
