@@ -773,7 +773,7 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
               xs' <- sequence $ fmap expandTree'' xs
               let xs'' = concatMap (printf " (%s)" :: String -> String) xs'
               return $ printf "%s%s%s" e f xs''
-            expandTree'' Output = return "o"
+            expandTree'' Output = return $ printf "%sVar o" e
             expandTree'' (Input n) = return $ printf "x%d'" n
 
         args :: Int -> String
@@ -818,7 +818,7 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
           ++ [ printf "        let ds = concat [%s]" (concat $ intersperse ", " $ fmap (printf "dx%d") [1..n]) ]
           ++ ( fmap (\i -> printf "        v%d <- fresh" i) [1..q] )
           ++ [        "        o <- fresh"
-             , printf "        return $ (o, ds ++ [%s])" converted
+             , printf "        return $ (%sVar o, ds ++ [%s])" e converted
              ] 
           where
             t = useParser d
