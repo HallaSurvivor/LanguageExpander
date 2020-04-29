@@ -57,8 +57,9 @@ main = do
         put $ M.insert (_name t) tNew tm
         return tNew
       where
-        derived t = mempty { _derivedFunctions = _functions t ++ _derivedFunctions t
-                           , _derivedRelations = _relations t ++ _derivedRelations t
+        derived s = mempty { _derivedFunctions = _functions s ++ _derivedFunctions s
+                           , _derivedRelations = _relations s ++ _derivedRelations s
+                           , _canConvertTo     = _extending t ++ _canConvertTo s
                            }
 
 -- {{{ Parse the input file
@@ -71,6 +72,7 @@ data Theory = Theory { _name             :: String
                      , _relDefns         :: [(String, String)]
                      , _derivedFunctions :: [(String,Int)]
                      , _derivedRelations :: [(String,Int)]
+                     , _canConvertTo     :: [String]
                      } deriving Show
 
 instance Semigroup Theory where
@@ -83,9 +85,10 @@ instance Semigroup Theory where
     (_relDefns t   <> _relDefns s)
     (_derivedFunctions t <> _derivedFunctions s)
     (_derivedRelations t <> _derivedRelations s)
+    (_canConvertTo t <> _canConvertTo s)
 
 instance Monoid Theory where
-  mempty = Theory "" [] [] [] [] [] [] []
+  mempty = Theory "" [] [] [] [] [] [] [] []
 
 
 word :: Parser String
@@ -260,9 +263,12 @@ boilerplate ts =
     mkInput (0,t) = printf "      try parse%sToString" (_name t)
     mkInput (_,t) = printf "  <|> try parse%sToString" (_name t)
 
+    mkConv t = fmap (printf "  <|> try convert%sTo%s" (_name t)) (_canConvertTo t)
+
     parseInput = [ "parseInput :: Parser String"
                  , "parseInput = do"
                  ] ++ (fmap mkInput $ zip [0..] ts)
+                   ++ (concatMap mkConv ts)
 
 
 -- }}}
@@ -495,8 +501,18 @@ mkParsers t = unlines $ [terms, atomics, formulas, exposed]
       , printf "  tree <- parse%s" name
       , printf "  eof"
       ,        "  return $ show tree"
-      ]
+      , printf ""
+      ] ++ (fmap convertBlahToBlah (_canConvertTo t))
 
+    convertBlahToBlah s = unlines $
+      [ printf "convert%sTo%s :: Parser String" name s
+      , printf "convert%sTo%s = do" name s
+      , printf "  string \"Convert%sTo%s\"" name s
+      ,        "  spaces"
+      , printf "  tree <- parse%s" name
+      , printf "  eof"
+      , printf "  return $ show (convertTo%s tree)" s
+      ]
 -- }}}
 
 -- {{{ Make the converters
@@ -680,6 +696,9 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
         ] ++ atomicDefns ++
         [ ""
         , printf "      convertTerm :: %sTerm String -> State Context (%sTerm String, [%s String])" name e e
+        , printf "      convertTerm (%sVar x) = do" name
+        ,        "        (_,m) <- get"
+        , printf "        return $ (%sVar (M.findWithDefault x x m), [])" e
         ] ++ termDefns
       where
         atomicDefns = concat $  fmap mkDerivedRel (("True",0) : ("False",0) : ("Eq",2) : (_derivedRelations t))
