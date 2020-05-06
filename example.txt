@@ -14,10 +14,11 @@ BSTB:
 extending BSTA
 funDef (BinUnion, 2) Eq(o,Union(Pairing(v1,v2)))
 
-GT:
+GroupT:
 funNew (E,0)
 funNew (Inv,1)
 funNew (Mult,2)
 
 GTComm:
+extending GroupT
 funDef (Comm,2) Eq(o,Mult(Inv(v1),Mult(Inv(v2),Mult(v1,v2))))

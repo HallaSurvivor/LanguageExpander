@@ -15,11 +15,73 @@ import Text.Parsec.Language
 import Text.Parsec.Expr
 
 
+help :: String
+help = unlines $ 
+  [ "usage: MkST language_file"
+  , ""
+  , "outputs a new file Converter.hs which converts from high level syntax to low level syntax"
+  , ""
+  , "Converter, when run, opens a repl that allows the following commands:"
+  , "<lang> <formula>"
+  , "Convert<lang1>To<lang2> <formula_in_lang_1>"
+  , ""
+  , "if <lang1> extends <lang2>, then <lang1> gains access to all the symbols defined in <lang2>"
+  , ""
+  , "syntax available in all languages is:"
+  , "  Eq(x,y)"
+  , "  formula && formula"
+  , "  formula || formula"
+  , "  formula -> formula"
+  , "  formula <-> formula"
+  , "  Not(formula)"
+  , "  ForAll var (formula)"
+  , "  Exists var (formula)"
+  , ""
+  , "language_file should be a file written in the syntax shown in the following example:"
+  , ""
+  , "-------------------------------------------------------------------"
+  , "BST:"
+  , "relNew (In, 2)"
+  , ""
+  , "BSTA:" 
+  , "extending BST"
+  , "funDef (Empty,0) ForAll z (Not In(z,o))"
+  , "funDef (PowerSet,1) ForAll z (In(z,o) <-> ForAll w (In(w,z) -> In(w,v1)))"
+  , "relDef (Subset,2) ForAll z (In(z,v1) -> In(z,v2))"
+  , "funDef (Union,1) ForAll z (In(z,o) <-> Exists w (In(z,w) && In(w,v1)))"
+  , "funDef (Singleton, 1) ForAll z (In(z,o) <-> Eq(z,v1))"
+  , "funDef (Pairing, 2) ForAll z (In(z,o) <-> Eq(z,v1) || Eq(z,v2))"
+  , ""
+  , "BSTB:"
+  , "extending BSTA"
+  , "funDef (BinUnion, 2) Eq(o,Union(Pairing(v1,v2)))"
+  , ""
+  , "GroupT:"
+  , "funNew (E,0)"
+  , "funNew (Inv,1)"
+  , "funNew (Mult,2)"
+  , ""
+  , "GTComm:"
+  , "extending GroupT"
+  , "funDef (Comm,2) Eq(o,Mult(Inv(v1),Mult(Inv(v2),Mult(v1,v2))))"
+  , "-------------------------------------------------------------------"
+  , ""
+  , " - Each block should be separated by a blank line"
+  , " - Each language name should begin with a Capital"
+  , " - relNew and funNew create new symbols, with no definition"
+  , " - relDef and funDef define new symbols, coupled with a way to expand them"
+  , " - all symbols should start with capital letters"
+  , " - constant symbols are 0-arity functions"
+  , " - for definitions, the input variables should be called v1...vn"
+  , " - for function defintions, the output variables should be called o"
+  , " - don't use v or o for any other variable names"
+  ]
+
 main :: IO ()
 main = do
     args <- getArgs
     case args of
-      []    -> putStrLn $ "Write a help message?" -- print syntax, etc?
+      []    -> putStrLn help
       (x:_) -> do
         s <- readFile x
         
