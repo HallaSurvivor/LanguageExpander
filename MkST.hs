@@ -4,6 +4,7 @@
 -- low level ones. Takes in a description of the languages of interest.
 -- Read the help message for more details.
 --
+-- TODO: allow comments in the input file
 -- TODO: handle errors gracefully when parsing the input file
 -- TODO: make Converter.hs parse terms as well as formulas
 -- TODO: clean up the code so we don't have a bunch of (&& True)s
