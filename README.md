@@ -1,7 +1,3 @@
-TODO - write a good help message
-
-TODO - look into the parens thing in the pretty printer
-
 TODO - make it parse terms too
 
 TODO - write a good readme
@@ -11,5 +7,3 @@ TODO - write a good readme
   - include a screenshot/gif of it working
 
 TODO - built BST up all the way to fundamental theorem of calculus, and format it to look like the theorem
-
-TODO - make it handle errors gracefully? 
