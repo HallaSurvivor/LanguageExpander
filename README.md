@@ -11,7 +11,7 @@ Converter, when run, opens a repl that allows the following commands:
  - `<lang> <formula>` -- prints the formula unambiguously as a tree
  - `Convert<lang1>To<lang2> <formula_in_lang_1>` -- prints the version of the given formula converted to lang2
 
-if <lang1> extends <lang2>, then <lang1> gains access to all the symbols defined in <lang2>
+if lang1 extends lang2, then lang1 gains access to all the symbols defined in lang2
 
 syntax available in all languages is:
   - `Eq(x,y)`

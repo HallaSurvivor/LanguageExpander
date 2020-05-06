@@ -20,10 +20,11 @@ funDef (OrderedPair, 2) Eq(o,Pairing(Singleton(v1), Pairing(v1,v2)))
 ST3:
 extending ST2
 funDef (CartesianProduct, 2) ForAll z (In(z,o) <-> Exists a (Exists b (In(a,v1) && In(b,v2) && Eq(z,OrderedPair(a,b)))))
+funDef (InductiveSets, 0) 
 
 ST4:
 extending ST3
-funDef (N,0) 
+funDef (N,0) Eq(o,Intersection(InductiveSets))
 
 ST5:
 extending ST4
