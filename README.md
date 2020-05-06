@@ -8,24 +8,25 @@ automate the unraveling of a complicated chain of
 like those found in Set Theory.
 
 Converter, when run, opens a repl that allows the following commands:
-<lang> <formula>
-Convert<lang1>To<lang2> <formula_in_lang_1>
+ - `<lang> <formula>`
+ - `Convert<lang1>To<lang2> <formula_in_lang_1>`
+
 if <lang1> extends <lang2>, then <lang1> gains access to all the symbols defined in <lang2>
 
 syntax available in all languages is:
-  Eq(x,y)
-  formula && formula
-  formula || formula
-  formula -> formula
-  formula <-> formula
-  Not(formula)
-  ForAll var (formula)
-  Exists var (formula)
+  - `Eq(x,y)`
+  - `formula && formula`
+  - `formula || formula`
+  - `formula -> formula`
+  - `formula <-> formula`
+  - `Not(formula)`
+  - `ForAll var (formula)`
+  - `Exists var (formula)`
 
 language_file should be a file written in the syntax shown in the following example:
 
 -------------------------------------------------------------------
-
+```
 BST:
 relNew (In, 2)
 
@@ -50,7 +51,7 @@ funNew (Mult,2)
 GTComm:
 extending GroupT
 funDef (Comm,2) Eq(o,Mult(Inv(v1),Mult(Inv(v2),Mult(v1,v2))))
-
+```
 -------------------------------------------------------------------
 
 Keep in mind this was made for personal use, so I was OK leaving things
