@@ -71,3 +71,7 @@ Here's a list of all the possible pitfalls I could think of:
  - for definitions, the input variables should be called `v1` ... `vn`
  - for function definitions, the output variable should be called `o`
  - don't use v or o for anything else.
+
+-------------------------------------------------------------------
+
+![Example](./example.svg)
