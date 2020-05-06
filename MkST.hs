@@ -1,4 +1,14 @@
--- A module to make ASTs for Main.hs
+-- A metaprogramming project that turns language descriptions into parsers
+--
+-- Outputs a file Converter.hs that converts from high level languages to 
+-- low level ones. Takes in a description of the languages of interest.
+-- Read the help message for more details.
+--
+-- TODO: handle errors gracefully when parsing the input file
+-- TODO: make Converter.hs parse terms as well as formulas
+-- TODO: clean up the code so we don't have a bunch of (&& True)s
+--
+-- Chris Grossack, 2020
 module MkST where
 import System.IO
 import System.Environment

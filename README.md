@@ -1,5 +1,3 @@
-TODO - make it parse terms too
-
 TODO - write a good readme
   - explain that this doesn't do any logic, just syntax
   - explain it might be buggy - it was made for me
