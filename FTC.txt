@@ -1,0 +1,34 @@
+PrimitiveSetTheory:
+relNew (In,2)
+
+ST1:
+extending PrimitiveSetTheory
+funDef (Empty,0) ForAll z (Not In(z,o))
+relDef (Subset,2) ForAll z (In(z,v1) -> In(z,v2))
+funDef (Union,1) ForAll z (In(z,o) <-> Exists a (In(a,v1) && In(z,a)))
+funDef (Intersection,1) ForAll z (In(z,o) <-> ForAll a (In(a,v1) -> In(z,a)))
+funDef (Singleton, 1) ForAll z (In(z,o) <-> Eq(z,v1))
+funDef (Pairing, 2) ForAll z (In(z,o) <-> (Eq(z,v1) || Eq(z,v2)))
+
+ST2:
+extending ST1
+funDef (Powerset, 1) ForAll z (In(z,o) <-> Subset(z,v1))
+funDef (BinUnion, 2)  Eq(o,Union(Pairing(v1,v2)))
+funDef (BinIntersection, 2) Eq(o,Intersection(Pairing(v1,v2)))
+funDef (OrderedPair, 2) Eq(o,Pairing(Singleton(v1), Pairing(v1,v2)))
+
+ST3:
+extending ST2
+funDef (CartesianProduct, 2) ForAll z (In(z,o) <-> Exists a (Exists b (In(a,v1) && In(b,v2) && Eq(z,OrderedPair(a,b)))))
+
+ST4:
+extending ST3
+funDef (N,0) 
+
+ST5:
+extending ST4
+funDef (Z,0)
+
+ST6:
+extending ST5
+funDef (Q,0)
