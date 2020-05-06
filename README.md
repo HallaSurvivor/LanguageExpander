@@ -8,8 +8,8 @@ automate the unraveling of a complicated chain of
 like those found in Set Theory.
 
 Converter, when run, opens a repl that allows the following commands:
- - `<lang> <formula>`
- - `Convert<lang1>To<lang2> <formula_in_lang_1>`
+ - `<lang> <formula>` -- prints the formula unambiguously as a tree
+ - `Convert<lang1>To<lang2> <formula_in_lang_1>` -- prints the version of the given formula converted to lang2
 
 if <lang1> extends <lang2>, then <lang1> gains access to all the symbols defined in <lang2>
 
@@ -68,6 +68,6 @@ Here's a list of all the possible pitfalls I could think of:
  - don't use relNew/funNew with extends
  - don't use relDef/funDef without extends
  - constant symbols are 0-arity functions
- - for definitions, the input variables should be called v1 ... vn
- - for function definitions, the output variable should be called o
+ - for definitions, the input variables should be called `v1` ... `vn`
+ - for function definitions, the output variable should be called `o`
  - don't use v or o for anything else.
