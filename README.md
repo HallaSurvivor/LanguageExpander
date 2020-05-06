@@ -74,4 +74,4 @@ Here's a list of all the possible pitfalls I could think of:
 
 -------------------------------------------------------------------
 
-![Example](./example.svg)
+![Example](./tutorial.svg)
