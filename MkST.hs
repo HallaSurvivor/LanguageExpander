@@ -7,7 +7,6 @@
 -- TODO: allow comments in the input file
 -- TODO: handle errors gracefully when parsing the input file
 -- TODO: make Converter.hs parse terms as well as formulas
--- TODO: clean up the code so we don't have a bunch of (&& True)s
 --
 -- Chris Grossack, 2020
 module MkST where
@@ -77,9 +76,10 @@ help = unlines $
   , "funDef (Comm,2) Eq(o,Mult(Inv(v1),Mult(Inv(v2),Mult(v1,v2))))"
   , "-------------------------------------------------------------------"
   , ""
-  , "- each block should be separated by a blank line"
+  , " - each block should be separated by a blank line"
   , " - each language can extend at most one language"
   , " - each language name should begin with a Capital"
+  , " - language names should not contain numerals"
   , " - all symbols should start with a Capital"
   , " - all variables should start with a lowercase letter"
   , " - relNew and funNew create new symbols, with no definition"
@@ -803,8 +803,22 @@ mkConverters t = unlines $ [ classDefn, inheritance, instances ]
 
     mkInstance e = unlines $
         [ printf "instance ConvertibleTo%s %s where" e name
-        , printf "  convertTo%s = (flip evalState ctx0) . convertExpr" e
+        , printf "  convertTo%s = pruneTrues . (flip evalState ctx0) . convertExpr" e
         ,        "    where"
+        , printf "      pruneTrues (%sAnd x y) = " e
+        ,        "        case (pruneTrues x, pruneTrues y) of"
+        , printf "          (%sAtom %sTrue, %sAtom %sTrue) -> (%sAtom %sTrue)" e e e e e e
+        , printf "          (%sAtom %sTrue, y') -> y'" e e
+        , printf "          (x', %sAtom %sTrue) -> x'" e e
+        , printf "          (x', y') -> (%sAnd x' y')" e
+        , printf "      pruneTrues (%sAtom x) = %sAtom x" e e
+        , printf "      pruneTrues (%sOr x y) = %sOr (pruneTrues x) (pruneTrues y)" e e
+        , printf "      pruneTrues (%sImplies x y) = %sImplies (pruneTrues x) (pruneTrues y)" e e
+        , printf "      pruneTrues (%sIff x y) = %sIff (pruneTrues x) (pruneTrues y)" e e
+        , printf "      pruneTrues (%sNot x) = %sNot (pruneTrues x)" e e
+        , printf "      pruneTrues (%sForAll a x) = %sForAll a (pruneTrues x)" e e
+        , printf "      pruneTrues (%sExists a x) = %sExists a (pruneTrues x)" e e
+        , ""
         , printf "      convertExpr (%sAtom x)      = convertAtomic x" name
         , printf "      convertExpr (%sAnd x y)     = %sAnd      <$> (convertExpr x) <*> (convertExpr y)" name e
         , printf "      convertExpr (%sOr x y)      = %sOr       <$> (convertExpr x) <*> (convertExpr y)" name e

@@ -61,6 +61,7 @@ Here's a list of all the possible pitfalls I could think of:
  - each block should be separated by a blank line
  - each language can extend at most one language
  - each language name should begin with a Capital
+ - language names should not contain numerals
  - all symbols should start with a Capital
  - all variables should start with a lowercase letter
  - relNew and funNew create new symbols, with no definition
