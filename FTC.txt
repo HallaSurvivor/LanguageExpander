@@ -1,7 +1,7 @@
 PrimitiveSetTheory:
 relNew (In,2)
 
-ST1:
+STA:
 extending PrimitiveSetTheory
 funDef (Empty,0) ForAll z (Not In(z,o))
 relDef (Subset,2) ForAll z (In(z,v1) -> In(z,v2))
@@ -10,26 +10,22 @@ funDef (Intersection,1) ForAll z (In(z,o) <-> ForAll a (In(a,v1) -> In(z,a)))
 funDef (Singleton, 1) ForAll z (In(z,o) <-> Eq(z,v1))
 funDef (Pairing, 2) ForAll z (In(z,o) <-> (Eq(z,v1) || Eq(z,v2)))
 
-ST2:
-extending ST1
+STB:
+extending STA
 funDef (Powerset, 1) ForAll z (In(z,o) <-> Subset(z,v1))
 funDef (BinUnion, 2)  Eq(o,Union(Pairing(v1,v2)))
 funDef (BinIntersection, 2) Eq(o,Intersection(Pairing(v1,v2)))
 funDef (OrderedPair, 2) Eq(o,Pairing(Singleton(v1), Pairing(v1,v2)))
 
-ST3:
-extending ST2
+STC:
+extending STB
 funDef (CartesianProduct, 2) ForAll z (In(z,o) <-> Exists a (Exists b (In(a,v1) && In(b,v2) && Eq(z,OrderedPair(a,b)))))
-funDef (InductiveSets, 0) 
+funDef (S,1) Eq(o,BinUnion(v1,Singleton(v1)))
 
-ST4:
-extending ST3
-funDef (N,0) Eq(o,Intersection(InductiveSets))
+STD:
+extending STC
+relDef (IsInductive, 1) In(Empty,v1) && ForAll y (In(y,v1) -> In(S(y),v1))
 
-ST5:
-extending ST4
-funDef (Z,0)
-
-ST6:
-extending ST5
-funDef (Q,0)
+STE:
+extending STD
+funDef (N, 0) ForAll z (In(z,o) <-> ForAll i (IsInductive(i) -> In(z,i)))
